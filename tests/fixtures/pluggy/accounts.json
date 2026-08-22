@@ -1,0 +1,19 @@
+{
+  "results": [
+    {
+      "id": "acc-credit-1",
+      "itemId": "item-nubank-1",
+      "type": "CREDIT",
+      "name": "Cartao Nubank",
+      "number": "1234",
+      "creditData": { "balanceDueDate": "2026-09-10", "creditLimit": 15000 }
+    },
+    {
+      "id": "acc-bank-1",
+      "itemId": "item-nubank-1",
+      "type": "BANK",
+      "name": "Conta Nubank",
+      "number": "9876"
+    }
+  ]
+}

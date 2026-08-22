@@ -1,0 +1,34 @@
+{
+  "page": 1,
+  "totalPages": 1,
+  "results": [
+    {
+      "id": "tx-1",
+      "accountId": "acc-credit-1",
+      "description": "ZAFFARI PORTO ALEG *0421",
+      "amount": 284.9,
+      "date": "2026-08-20T14:02:00.000Z",
+      "type": "DEBIT",
+      "category": "Supermarkets",
+      "merchant": { "name": "Zaffari" }
+    },
+    {
+      "id": "tx-late-night",
+      "accountId": "acc-credit-1",
+      "description": "IFOOD *PEDIDO",
+      "amount": 61.5,
+      "date": "2026-08-01T02:30:00.000Z",
+      "type": "DEBIT",
+      "category": "Food delivery"
+    },
+    {
+      "id": "tx-refund",
+      "accountId": "acc-credit-1",
+      "description": "ESTORNO ZAFFARI",
+      "amount": 30.0,
+      "date": "2026-08-21T10:00:00.000Z",
+      "type": "CREDIT",
+      "category": "Supermarkets"
+    }
+  ]
+}
