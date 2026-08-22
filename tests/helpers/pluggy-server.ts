@@ -17,6 +17,12 @@ export function startPluggyServer(overrides: RequestHandler[] = []) {
     http.post(`${BASE}/connect_token`, () => HttpResponse.json({ accessToken: 'connect-token-abc' })),
     http.get(`${BASE}/items/:itemId`, () => HttpResponse.json(item)),
     http.get(`${BASE}/accounts`, () => HttpResponse.json(accounts)),
-    http.get(`${BASE}/transactions`, () => HttpResponse.json(transactions)),
+    http.get(`${BASE}/transactions`, ({ request }) => {
+      const accountId = new URL(request.url).searchParams.get('accountId')
+      const results = accountId
+        ? transactions.results.filter((tx) => tx.accountId === accountId)
+        : transactions.results
+      return HttpResponse.json({ ...transactions, results })
+    }),
   )
 }

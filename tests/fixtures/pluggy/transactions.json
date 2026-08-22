@@ -29,6 +29,15 @@
       "date": "2026-08-21T10:00:00.000Z",
       "type": "CREDIT",
       "category": "Supermarkets"
+    },
+    {
+      "id": "tx-bank-1",
+      "accountId": "acc-bank-1",
+      "description": "TARIFA MANUTENCAO CONTA",
+      "amount": 12.9,
+      "date": "2026-08-10T12:00:00.000Z",
+      "type": "DEBIT",
+      "category": "Fees"
     }
   ]
 }

@@ -1,5 +1,6 @@
-import { afterAll, beforeAll, beforeEach, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from 'vitest'
 import { hashPassword } from '@/lib/auth/password'
+import { listConnections } from '@/lib/db/connections'
 import { createHousehold } from '@/lib/db/households'
 import { listTransactions } from '@/lib/db/transactions'
 import { createPluggyClient } from '@/lib/pluggy/client'
@@ -11,6 +12,7 @@ import { startPluggyServer } from './helpers/pluggy-server'
 const server = startPluggyServer()
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+afterEach(() => server.resetHandlers())
 afterAll(() => server.close())
 beforeEach(resetDb)
 
@@ -109,7 +111,31 @@ it('updates an amount that changed between syncs rather than inserting a second 
   expect(rows.find((r) => r.pluggyTransactionId === 'tx-1')!.amountCents).toBe(30115)
 })
 
-it('records the sync time and does not cross households', async () => {
+it('attributes transactions to the correct account and reports the true upserted count', async () => {
+  const { db, householdId, connectionId } = await seedConnection()
+
+  const result = await syncConnection(db, pluggy(), connectionId)
+  const rows = await listTransactions(db, householdId)
+
+  const purchase = rows.find((r) => r.pluggyTransactionId === 'tx-1')!
+  const bankFee = rows.find((r) => r.pluggyTransactionId === 'tx-bank-1')!
+
+  expect(purchase.accountName).toBe('Cartao Nubank')
+  expect(bankFee.accountName).toBe('Conta Nubank')
+  expect(result.upserted).toBe(4)
+})
+
+it('records the sync time and status on the connection', async () => {
+  const { db, householdId, connectionId } = await seedConnection()
+
+  await syncConnection(db, pluggy(), connectionId)
+  const [connection] = await listConnections(db, householdId)
+
+  expect(connection.lastSyncedAt).not.toBeNull()
+  expect(connection.status).toBe('UPDATED')
+})
+
+it('does not leak transactions across households', async () => {
   const { db, householdId, connectionId } = await seedConnection()
   await syncConnection(db, pluggy(), connectionId)
 
