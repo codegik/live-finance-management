@@ -8,6 +8,7 @@ const BASE = 'https://api.pluggy.test'
 
 export function startPluggyServer(overrides: RequestHandler[] = []) {
   return setupServer(
+    ...overrides,
     http.post(`${BASE}/auth`, async ({ request }) => {
       const body = (await request.json()) as { clientId: string; clientSecret: string }
       if (body.clientId !== 'client-id') return new HttpResponse(null, { status: 403 })
@@ -17,6 +18,5 @@ export function startPluggyServer(overrides: RequestHandler[] = []) {
     http.get(`${BASE}/items/:itemId`, () => HttpResponse.json(item)),
     http.get(`${BASE}/accounts`, () => HttpResponse.json(accounts)),
     http.get(`${BASE}/transactions`, () => HttpResponse.json(transactions)),
-    ...overrides,
   )
 }

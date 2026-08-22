@@ -28,12 +28,17 @@ export function createPluggyClient(config: PluggyConfig): PluggyClient {
     return apiKey
   }
 
-  async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  async function request<T>(path: string, init: RequestInit = {}, isRetry = false): Promise<T> {
     const key = await authenticate()
     const response = await fetch(`${config.apiUrl}${path}`, {
       ...init,
       headers: { ...init.headers, 'content-type': 'application/json', 'X-API-KEY': key },
     })
+    if (response.status === 401 || response.status === 403) {
+      if (isRetry) throw new Error('PLUGGY_AUTH_FAILED')
+      apiKey = undefined
+      return request<T>(path, init, true)
+    }
     if (!response.ok) throw new Error(`PLUGGY_REQUEST_FAILED:${response.status}:${path}`)
     return (await response.json()) as T
   }

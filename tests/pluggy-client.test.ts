@@ -1,10 +1,12 @@
-import { afterAll, beforeAll, expect, it } from 'vitest'
+import { http, HttpResponse } from 'msw'
+import { afterAll, afterEach, beforeAll, expect, it } from 'vitest'
 import { createPluggyClient } from '@/lib/pluggy/client'
 import { startPluggyServer } from './helpers/pluggy-server'
 
 const server = startPluggyServer()
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+afterEach(() => server.resetHandlers())
 afterAll(() => server.close())
 
 function client() {
@@ -42,5 +44,70 @@ it('surfaces a pluggy failure as an error rather than empty data', async () => {
     clientSecret: 'bad',
   })
 
+  await expect(pluggy.getItem('item-nubank-1')).rejects.toThrow('PLUGGY_AUTH_FAILED')
+})
+
+// This test constructs a SECOND setupServer instance via startPluggyServer([...]) rather
+// than using server.use() on the module-level server. That is deliberate: server.use()
+// handlers always take precedence over the base handlers regardless of array order, so
+// routing this through server.use() would never exercise the ...overrides-ordering defect
+// that was fixed in startPluggyServer itself. To avoid two concurrently-listening MSW
+// interceptors contending over the same global fetch/http patch, the module-level server
+// is closed for the duration of this test and re-listened afterwards, so only one
+// setupServer instance is ever enabled at a time.
+it('allows constructor overrides to take precedence over default handlers', async () => {
+  const overriddenServer = startPluggyServer([
+    http.get('https://api.pluggy.test/items/:itemId', () =>
+      HttpResponse.json({
+        id: 'override-item',
+        status: 'UPDATING',
+        connector: { id: 1, name: 'Override' },
+        lastUpdatedAt: null,
+      }),
+    ),
+  ])
+
+  server.close()
+  overriddenServer.listen({ onUnhandledRequest: 'error' })
+
+  try {
+    const pluggy = client()
+    const item = await pluggy.getItem('item-nubank-1')
+    expect(item.connector.name).toBe('Override')
+  } finally {
+    overriddenServer.close()
+    server.listen({ onUnhandledRequest: 'error' })
+  }
+})
+
+it('retries auth on 401 and re-authenticates', async () => {
+  let requestCount = 0
+  server.use(
+    http.get('https://api.pluggy.test/items/:itemId', () => {
+      requestCount++
+      if (requestCount === 1) {
+        return new HttpResponse(null, { status: 401 })
+      }
+      return HttpResponse.json({
+        id: 'item-nubank-1',
+        status: 'UPDATED',
+        connector: { id: 212, name: 'Nubank' },
+        lastUpdatedAt: '2026-08-22T09:00:00.000Z',
+      })
+    }),
+  )
+
+  const pluggy = client()
+  const item = await pluggy.getItem('item-nubank-1')
+  expect(item.connector.name).toBe('Nubank')
+  expect(requestCount).toBe(2)
+})
+
+it('throws PLUGGY_AUTH_FAILED on persistent 401 after retry', async () => {
+  server.use(
+    http.get('https://api.pluggy.test/items/:itemId', () => new HttpResponse(null, { status: 401 })),
+  )
+
+  const pluggy = client()
   await expect(pluggy.getItem('item-nubank-1')).rejects.toThrow('PLUGGY_AUTH_FAILED')
 })
