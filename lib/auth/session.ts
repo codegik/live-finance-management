@@ -1,7 +1,33 @@
-import NextAuth from 'next-auth'
+import NextAuth, { type Session, type User } from 'next-auth'
+import type { JWT } from 'next-auth/jwt'
 import Credentials from 'next-auth/providers/credentials'
 import { getDb } from '@/lib/db/client'
 import { authorizeCredentials, type SessionUser } from './config'
+
+export function attachHouseholdToToken({
+  token,
+  user,
+}: {
+  token: JWT
+  user?: User | null
+}): JWT {
+  if (user) token.householdId = (user as SessionUser).householdId
+  return token
+}
+
+export function attachHouseholdToSession({
+  session,
+  token,
+}: {
+  session: Session
+  token: JWT
+}): Session {
+  if (session.user) {
+    session.user.id = token.sub!
+    session.user.householdId = token.householdId as string
+  }
+  return session
+}
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   session: { strategy: 'jwt' },
@@ -18,17 +44,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
   callbacks: {
-    jwt: ({ token, user }) => {
-      if (user) token.householdId = (user as SessionUser).householdId
-      return token
-    },
-    session: ({ session, token }) => {
-      if (session.user) {
-        session.user.id = token.sub!
-        session.user.householdId = token.householdId as string
-      }
-      return session
-    },
+    jwt: attachHouseholdToToken,
+    session: attachHouseholdToSession,
   },
 })
 
