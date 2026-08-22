@@ -8,7 +8,10 @@ export async function reconcileAll(
   pluggy: PluggyClient,
   opts: { now?: Date } = {},
 ): Promise<{ succeeded: string[]; failed: string[] }> {
-  const all = await db.select({ id: connections.id }).from(connections)
+  const all = await db
+    .select({ id: connections.id })
+    .from(connections)
+    .orderBy(connections.createdAt)
 
   const succeeded: string[] = []
   const failed: string[] = []

@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto'
 import { NextResponse } from 'next/server'
 import { getDb } from '@/lib/db/client'
 import { loadEnv } from '@/lib/env'
@@ -6,9 +7,16 @@ import { reconcileAll } from '@/lib/sync/reconcile'
 
 export const maxDuration = 300
 
+function authorizationMatches(provided: string | null, expected: string): boolean {
+  if (!provided) return false
+  const a = Buffer.from(provided)
+  const b = Buffer.from(`Bearer ${expected}`)
+  return a.length === b.length && timingSafeEqual(a, b)
+}
+
 export async function GET(request: Request) {
   const env = loadEnv()
-  if (request.headers.get('authorization') !== `Bearer ${env.CRON_SECRET}`) {
+  if (!authorizationMatches(request.headers.get('authorization'), env.CRON_SECRET)) {
     return NextResponse.json({ error: 'UNAUTHORIZED' }, { status: 401 })
   }
 
@@ -20,5 +28,8 @@ export async function GET(request: Request) {
 
   const result = await reconcileAll(getDb(), pluggy)
 
-  return NextResponse.json(result)
+  const status =
+    result.failed.length === 0 ? 200 : result.succeeded.length === 0 ? 500 : 207
+
+  return NextResponse.json(result, { status })
 }
