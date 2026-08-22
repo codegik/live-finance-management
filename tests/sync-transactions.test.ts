@@ -74,6 +74,70 @@ it('keeps a date-only (UTC midnight) transaction on its own calendar date', asyn
   expect(dateOnly.date).toBe('2026-08-01')
 })
 
+it('keeps a bare date (no time component) on its own calendar date', async () => {
+  const { db, householdId, connectionId } = await seedConnection()
+
+  const { http, HttpResponse } = await import('msw')
+  server.use(
+    http.get('https://api.pluggy.test/transactions', () =>
+      HttpResponse.json({
+        page: 1,
+        totalPages: 1,
+        results: [
+          {
+            id: 'tx-bare-date',
+            accountId: 'acc-credit-1',
+            description: 'ASSINATURA STREAMING',
+            amount: 45.0,
+            date: '2026-08-01',
+            type: 'DEBIT',
+            category: 'Subscriptions',
+          },
+        ],
+      }),
+    ),
+  )
+
+  await syncConnection(db, pluggy(), connectionId)
+  const rows = await listTransactions(db, householdId)
+
+  // A bare YYYY-MM-DD carries no time-of-day at all, so it cannot be a
+  // genuine instant -- there is no trade-off here, only a bug if it moved.
+  expect(rows.find((r) => r.pluggyTransactionId === 'tx-bare-date')!.date).toBe('2026-08-01')
+})
+
+it('keeps a +00:00-spelled UTC-midnight transaction on its own calendar date', async () => {
+  const { db, householdId, connectionId } = await seedConnection()
+
+  const { http, HttpResponse } = await import('msw')
+  server.use(
+    http.get('https://api.pluggy.test/transactions', () =>
+      HttpResponse.json({
+        page: 1,
+        totalPages: 1,
+        results: [
+          {
+            id: 'tx-offset-midnight',
+            accountId: 'acc-credit-1',
+            description: 'ASSINATURA STREAMING',
+            amount: 45.0,
+            date: '2026-08-01T00:00:00.000+00:00',
+            type: 'DEBIT',
+            category: 'Subscriptions',
+          },
+        ],
+      }),
+    ),
+  )
+
+  await syncConnection(db, pluggy(), connectionId)
+  const rows = await listTransactions(db, householdId)
+
+  expect(rows.find((r) => r.pluggyTransactionId === 'tx-offset-midnight')!.date).toBe(
+    '2026-08-01',
+  )
+})
+
 it('rejects a transaction with a missing amount instead of storing R$ 0,00', async () => {
   const { db, householdId, connectionId } = await seedConnection()
 
