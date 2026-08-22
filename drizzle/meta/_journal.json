@@ -22,6 +22,13 @@
       "when": 1787412199887,
       "tag": "0002_household_invite",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1787418390403,
+      "tag": "0003_connection_account",
+      "breakpoints": true
     }
   ]
 }
