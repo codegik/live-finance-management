@@ -4,7 +4,7 @@ import { beforeEach, expect, it } from 'vitest'
 import { authorizeCredentials } from '@/lib/auth/config'
 import { hashPassword, verifyPassword } from '@/lib/auth/password'
 import { createHousehold } from '@/lib/db/households'
-import { attachHouseholdToSession, attachHouseholdToToken } from '@/lib/auth/session'
+import { attachHouseholdToSession, attachHouseholdToToken, toSignInOrThrow } from '@/lib/auth/session'
 import { resetDb, testDb } from './helpers/db'
 
 beforeEach(resetDb)
@@ -119,4 +119,37 @@ it('preserves householdId on a token-refresh call where no user is passed', asyn
   const refreshedToken = attachHouseholdToToken({ token: initialToken })
 
   expect(refreshedToken.householdId).toBe(household.householdId)
+})
+
+it('toSignInOrThrow redirects to /signin on an UNAUTHENTICATED error', () => {
+  let caught: unknown
+  try {
+    toSignInOrThrow(new Error('UNAUTHENTICATED'))
+  } catch (error) {
+    caught = error
+  }
+
+  // next/navigation's redirect() throws a digest-tagged error rather than
+  // returning a value; the digest encodes type, destination, and status
+  // code as `NEXT_REDIRECT;<type>;<url>;<statusCode>;`.
+  const digest = (caught as { digest?: unknown } | undefined)?.digest
+  expect(typeof digest).toBe('string')
+  expect(digest as string).toMatch(/^NEXT_REDIRECT;replace;\/signin;/)
+})
+
+it('toSignInOrThrow rethrows an unrelated error unchanged, without redirecting', () => {
+  const original = new Error('DB_CONNECTION_LOST')
+  let caught: unknown
+
+  try {
+    toSignInOrThrow(original)
+  } catch (error) {
+    caught = error
+  }
+
+  // A helper that redirected on every error would convert a real database
+  // failure into a login screen -- silently hiding exactly the kind of
+  // failure this app is built to surface. The same object must come back,
+  // not a redirect.
+  expect(caught).toBe(original)
 })

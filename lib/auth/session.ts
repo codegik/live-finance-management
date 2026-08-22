@@ -1,3 +1,4 @@
+import { redirect } from 'next/navigation'
 import NextAuth, { type Session, type User } from 'next-auth'
 import type { JWT } from 'next-auth/jwt'
 import Credentials from 'next-auth/providers/credentials'
@@ -59,4 +60,18 @@ export async function requireSession(): Promise<SessionUser> {
     name: user.name ?? '',
     householdId: user.householdId,
   }
+}
+
+/**
+ * A server component that calls requireSession() cannot let its
+ * UNAUTHENTICATED throw escape uncaught -- Next renders that as a generic
+ * 500 page, and "you're not signed in" isn't a server error. Route the
+ * catch here so any other failure (a real DB/auth error) still propagates
+ * and surfaces as a 500, which is correct for that case.
+ */
+export function toSignInOrThrow(error: unknown): never {
+  if (error instanceof Error && error.message === 'UNAUTHENTICATED') {
+    redirect('/signin')
+  }
+  throw error
 }

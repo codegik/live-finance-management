@@ -1,8 +1,7 @@
-import { redirect } from 'next/navigation'
 import { ConnectCardButton } from '@/components/ConnectCardButton'
 import { StaleBanner } from '@/components/StaleBanner'
 import { TransactionList } from '@/components/TransactionList'
-import { requireSession } from '@/lib/auth/session'
+import { requireSession, toSignInOrThrow } from '@/lib/auth/session'
 import { getDb } from '@/lib/db/client'
 import { getLedgerView } from '@/lib/views/ledger'
 
@@ -13,15 +12,7 @@ export default async function LedgerPage() {
   // server component that lets that escape renders Next's generic 500 page.
   // "You're not signed in" isn't a server error; send the user to /signin
   // instead. Any other failure still propagates and surfaces as a 500.
-  let session
-  try {
-    session = await requireSession()
-  } catch (error) {
-    if (error instanceof Error && error.message === 'UNAUTHENTICATED') {
-      redirect('/signin')
-    }
-    throw error
-  }
+  const session = await requireSession().catch(toSignInOrThrow)
 
   const view = await getLedgerView(getDb(), session.householdId)
 
