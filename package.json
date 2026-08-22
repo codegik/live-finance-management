@@ -16,9 +16,11 @@
   "packageManager": "pnpm@10.28.2",
   "dependencies": {
     "@date-fns/tz": "^1.5.0",
+    "bcryptjs": "^2.4.3",
     "date-fns": "^4.4.0",
     "drizzle-orm": "^0.38.4",
     "next": "^15.5.23",
+    "next-auth": "5.0.0-beta.32",
     "postgres": "^3.4.9",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
@@ -26,6 +28,7 @@
   },
   "devDependencies": {
     "@testcontainers/postgresql": "^10.28.0",
+    "@types/bcryptjs": "^2.4.6",
     "@types/node": "^22.20.1",
     "@types/react": "^19.2.18",
     "drizzle-kit": "^0.30.6",
