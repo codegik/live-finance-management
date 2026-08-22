@@ -1,5 +1,6 @@
 import {
   bigint,
+  date,
   index,
   integer,
   pgEnum,
@@ -97,3 +98,28 @@ export const accounts = pgTable(
 
 export type Connection = typeof connections.$inferSelect
 export type Account = typeof accounts.$inferSelect
+
+export const transactions = pgTable(
+  'transaction',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    accountId: uuid('account_id')
+      .notNull()
+      .references(() => accounts.id, { onDelete: 'cascade' }),
+    pluggyTransactionId: text('pluggy_transaction_id').notNull(),
+    date: date('date').notNull(),
+    amountCents: bigint('amount_cents', { mode: 'number' }).notNull(),
+    description: text('description').notNull(),
+    merchantRaw: text('merchant_raw'),
+    pluggyCategory: text('pluggy_category'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('transaction_pluggy_unique').on(t.pluggyTransactionId),
+    index('transaction_account_date_idx').on(t.accountId, t.date),
+  ],
+)
+
+export type Transaction = typeof transactions.$inferSelect
+export type NewTransaction = typeof transactions.$inferInsert
