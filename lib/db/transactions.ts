@@ -31,7 +31,10 @@ export async function listTransactions(
     .innerJoin(accounts, eq(transactions.accountId, accounts.id))
     .innerJoin(connections, eq(accounts.connectionId, connections.id))
     .where(and(...filters))
-    .orderBy(desc(transactions.date), desc(transactions.createdAt))
+    // createdAt alone doesn't break ties deterministically: every row from a
+    // single sync gets a near-identical defaultNow() timestamp, so same-day
+    // rows could reorder between calls. id is a stable, unique tiebreaker.
+    .orderBy(desc(transactions.date), desc(transactions.createdAt), desc(transactions.id))
 
   return rows.map(({ transaction, account, connection }) => ({
     id: transaction.id,
