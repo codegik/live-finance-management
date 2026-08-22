@@ -30,28 +30,23 @@ export async function redeemInvite(
   const tokenHash = hashToken(input.token)
 
   return db.transaction(async (tx) => {
-    const [invite] = await tx
-      .select()
-      .from(householdInvites)
+    const [claimedInvite] = await tx
+      .update(householdInvites)
+      .set({ redeemedAt: new Date() })
       .where(and(eq(householdInvites.tokenHash, tokenHash), isNull(householdInvites.redeemedAt)))
-      .limit(1)
+      .returning()
 
-    if (!invite) throw new Error('INVALID_INVITE')
+    if (!claimedInvite) throw new Error('INVALID_INVITE')
 
     const [user] = await tx
       .insert(users)
       .values({
-        householdId: invite.householdId,
-        email: invite.email,
-        name: invite.name,
+        householdId: claimedInvite.householdId,
+        email: claimedInvite.email,
+        name: claimedInvite.name,
         passwordHash: await hashPassword(input.password),
       })
       .returning()
-
-    await tx
-      .update(householdInvites)
-      .set({ redeemedAt: new Date() })
-      .where(eq(householdInvites.id, invite.id))
 
     return { id: user.id, email: user.email, name: user.name, householdId: user.householdId }
   })

@@ -65,3 +65,23 @@ it('does not store the raw token', async () => {
 
   expect(row.tokenHash).not.toBe(token)
 })
+
+it('atomically enforces single-use through the invite claim', async () => {
+  const { db, householdId } = await seed()
+  const { token } = await createInvite(db, { householdId, email: 'wife@example.com', name: 'Wife' })
+
+  const results = await Promise.allSettled([
+    redeemInvite(db, { token, password: 'first-password' }),
+    redeemInvite(db, { token, password: 'second-password' }),
+  ])
+
+  const fulfilled = results.filter((r) => r.status === 'fulfilled')
+  const rejected = results.filter((r) => r.status === 'rejected')
+
+  expect(fulfilled).toHaveLength(1)
+  expect(rejected).toHaveLength(1)
+  expect(rejected[0].status === 'rejected' && rejected[0].reason.message).toBe('INVALID_INVITE')
+
+  const members = await listHouseholdUsers(db, householdId)
+  expect(members).toHaveLength(2)
+})
