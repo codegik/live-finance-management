@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from 'vitest'
+import { beforeEach, expect, it } from 'vitest'
 import { eq } from 'drizzle-orm'
 import { hashPassword } from '@/lib/auth/password'
 import { getHouseholdHealth } from '@/lib/db/health'
@@ -12,9 +12,6 @@ import { startPluggyServer } from './helpers/pluggy-server'
 
 const server = startPluggyServer()
 
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
-afterEach(() => server.resetHandlers())
-afterAll(() => server.close())
 beforeEach(async () => {
   useTestEnv()
   await resetDb()

@@ -4,10 +4,6 @@ export const STALE_AFTER_HOURS = 36
 
 export type StaleReason = 'NEEDS_REAUTH' | 'NOT_UPDATING'
 
-export function isStaleStatus(status: Connection['status']): boolean {
-  return status === 'LOGIN_ERROR' || status === 'WAITING_USER_INPUT' || status === 'OUTDATED'
-}
-
 export function staleReason(
   connection: Pick<Connection, 'status' | 'lastSyncedAt'>,
   now: Date,

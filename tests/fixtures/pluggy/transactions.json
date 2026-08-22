@@ -10,7 +10,9 @@
       "date": "2026-08-20T14:02:00.000Z",
       "type": "DEBIT",
       "category": "Supermarkets",
-      "merchant": { "name": "Zaffari" }
+      "merchant": {
+        "name": "Zaffari"
+      }
     },
     {
       "id": "tx-late-night",
@@ -38,6 +40,15 @@
       "date": "2026-08-10T12:00:00.000Z",
       "type": "DEBIT",
       "category": "Fees"
+    },
+    {
+      "id": "tx-date-only",
+      "accountId": "acc-credit-1",
+      "description": "ASSINATURA STREAMING",
+      "amount": 45.0,
+      "date": "2026-08-01T00:00:00.000Z",
+      "type": "DEBIT",
+      "category": "Subscriptions"
     }
   ]
 }

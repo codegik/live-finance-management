@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, expect, it } from 'vitest'
+import { beforeEach, expect, it } from 'vitest'
 import { hashPassword } from '@/lib/auth/password'
 import { createHousehold } from '@/lib/db/households'
 import { createPluggyClient } from '@/lib/pluggy/client'
@@ -10,8 +10,6 @@ import { startPluggyServer } from './helpers/pluggy-server'
 
 const server = startPluggyServer()
 
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
-afterAll(() => server.close())
 beforeEach(async () => {
   useTestEnv()
   await resetDb()
@@ -54,6 +52,9 @@ it('groups transactions by day, newest first, with a daily total', async () => {
     '2026-08-21',
     '2026-08-20',
     '2026-08-10',
+    // tx-date-only arrives as an exact UTC midnight, i.e. a calendar date
+    // with no time of day. It must stay on the 1st, not slide into July.
+    '2026-08-01',
     '2026-07-31',
   ])
 

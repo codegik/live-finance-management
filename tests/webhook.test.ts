@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, expect, it } from 'vitest'
+import { beforeEach, expect, it } from 'vitest'
 import { POST } from '@/app/api/webhooks/pluggy/route'
 import { hashPassword } from '@/lib/auth/password'
 import { createHousehold } from '@/lib/db/households'
@@ -10,8 +10,6 @@ import { startPluggyServer } from './helpers/pluggy-server'
 
 const server = startPluggyServer()
 
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
-afterAll(() => server.close())
 beforeEach(async () => {
   useTestEnv()
   await resetDb()

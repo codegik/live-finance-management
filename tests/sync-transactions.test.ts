@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from 'vitest'
+import { beforeEach, expect, it } from 'vitest'
 import { hashPassword } from '@/lib/auth/password'
 import { listConnections } from '@/lib/db/connections'
 import { createHousehold } from '@/lib/db/households'
@@ -11,9 +11,6 @@ import { startPluggyServer } from './helpers/pluggy-server'
 
 const server = startPluggyServer()
 
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
-afterEach(() => server.resetHandlers())
-afterAll(() => server.close())
 beforeEach(resetDb)
 
 function pluggy() {
@@ -60,6 +57,53 @@ it('buckets a late-night purchase into the Sao Paulo calendar date, not the UTC 
   const lateNight = rows.find((r) => r.pluggyTransactionId === 'tx-late-night')!
 
   expect(lateNight.date).toBe('2026-07-31')
+})
+
+it('keeps a date-only (UTC midnight) transaction on its own calendar date', async () => {
+  const { db, householdId, connectionId } = await seedConnection()
+
+  await syncConnection(db, pluggy(), connectionId)
+  const rows = await listTransactions(db, householdId)
+
+  const dateOnly = rows.find((r) => r.pluggyTransactionId === 'tx-date-only')!
+
+  // Pluggy pads a credit-card transaction whose time of day is unknown to
+  // exactly T00:00:00.000Z. Converting that as a real instant would move it
+  // to 2026-07-31 -- shifting every such transaction a day early, and every
+  // one on the 1st into the previous month.
+  expect(dateOnly.date).toBe('2026-08-01')
+})
+
+it('rejects a transaction with a missing amount instead of storing R$ 0,00', async () => {
+  const { db, householdId, connectionId } = await seedConnection()
+
+  const { http, HttpResponse } = await import('msw')
+  server.use(
+    http.get('https://api.pluggy.test/transactions', () =>
+      HttpResponse.json({
+        page: 1,
+        totalPages: 1,
+        results: [
+          {
+            id: 'tx-no-amount',
+            accountId: 'acc-credit-1',
+            description: 'SEM VALOR',
+            amount: null,
+            date: '2026-08-20T14:02:00.000Z',
+            type: 'DEBIT',
+          },
+        ],
+      }),
+    ),
+  )
+
+  // A zero-value row is the spec's named worst case: spend that vanishes from
+  // every total while the ledger still looks healthy. Fail the sync instead --
+  // the connection stays stale and the banner says so.
+  await expect(syncConnection(db, pluggy(), connectionId)).rejects.toThrow(
+    /PLUGGY_INVALID_TRANSACTION/,
+  )
+  expect(await listTransactions(db, householdId)).toHaveLength(0)
 })
 
 it('is idempotent: re-syncing changes no totals and creates no duplicates', async () => {
@@ -122,7 +166,7 @@ it('attributes transactions to the correct account and reports the true upserted
 
   expect(purchase.accountName).toBe('Cartao Nubank')
   expect(bankFee.accountName).toBe('Conta Nubank')
-  expect(result.upserted).toBe(4)
+  expect(result.upserted).toBe(5)
 })
 
 it('records the sync time and status on the connection', async () => {

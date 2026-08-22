@@ -1,10 +1,12 @@
 import { NextResponse } from 'next/server'
-import { requireSession } from '@/lib/auth/session'
+import { requireSessionOrResponse } from '@/lib/auth/guard'
 import { loadEnv } from '@/lib/env'
 import { createPluggyClient } from '@/lib/pluggy/client'
 
 export async function POST() {
-  await requireSession()
+  const guard = await requireSessionOrResponse()
+  if (guard.response) return guard.response
+
   const env = loadEnv()
 
   const pluggy = createPluggyClient({

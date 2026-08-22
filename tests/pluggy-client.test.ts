@@ -1,13 +1,10 @@
 import { http, HttpResponse } from 'msw'
-import { afterAll, afterEach, beforeAll, expect, it } from 'vitest'
+import { expect, it } from 'vitest'
 import { createPluggyClient } from '@/lib/pluggy/client'
-import { startPluggyServer } from './helpers/pluggy-server'
+import { createPluggyServer, startPluggyServer } from './helpers/pluggy-server'
 
 const server = startPluggyServer()
 
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
-afterEach(() => server.resetHandlers())
-afterAll(() => server.close())
 
 function client() {
   return createPluggyClient({
@@ -33,7 +30,8 @@ it('fetches the item, its accounts, and its transactions', async () => {
   expect(item.status).toBe('UPDATED')
   expect(item.connector.name).toBe('Nubank')
   expect(accounts.map((a) => a.type).sort()).toEqual(['BANK', 'CREDIT'])
-  expect(transactions).toHaveLength(3)
+  // tx-1, tx-late-night, tx-refund and tx-date-only all sit on acc-credit-1.
+  expect(transactions).toHaveLength(4)
   expect(transactions[0].description).toBe('ZAFFARI PORTO ALEG *0421')
 })
 
@@ -47,16 +45,18 @@ it('surfaces a pluggy failure as an error rather than empty data', async () => {
   await expect(pluggy.getItem('item-nubank-1')).rejects.toThrow('PLUGGY_AUTH_FAILED')
 })
 
-// This test constructs a SECOND setupServer instance via startPluggyServer([...]) rather
+// This test constructs a SECOND setupServer instance via createPluggyServer([...]) rather
 // than using server.use() on the module-level server. That is deliberate: server.use()
 // handlers always take precedence over the base handlers regardless of array order, so
 // routing this through server.use() would never exercise the ...overrides-ordering defect
-// that was fixed in startPluggyServer itself. To avoid two concurrently-listening MSW
+// that was fixed in the server factory itself. To avoid two concurrently-listening MSW
 // interceptors contending over the same global fetch/http patch, the module-level server
 // is closed for the duration of this test and re-listened afterwards, so only one
 // setupServer instance is ever enabled at a time.
 it('allows constructor overrides to take precedence over default handlers', async () => {
-  const overriddenServer = startPluggyServer([
+  // createPluggyServer, not startPluggyServer: hooks can only be registered
+  // during collection, and this runs inside a test.
+  const overriddenServer = createPluggyServer([
     http.get('https://api.pluggy.test/items/:itemId', () =>
       HttpResponse.json({
         id: 'override-item',
@@ -110,4 +110,71 @@ it('throws PLUGGY_AUTH_FAILED on persistent 401 after retry', async () => {
 
   const pluggy = client()
   await expect(pluggy.getItem('item-nubank-1')).rejects.toThrow('PLUGGY_AUTH_FAILED')
+})
+
+it('throws rather than silently returning page 1 when totalPages is missing', async () => {
+  server.use(
+    http.get('https://api.pluggy.test/transactions', () =>
+      HttpResponse.json({
+        page: 1,
+        results: [
+          {
+            id: 'tx-1',
+            accountId: 'acc-credit-1',
+            description: 'ZAFFARI PORTO ALEG *0421',
+            amount: 284.9,
+            date: '2026-08-20T14:02:00.000Z',
+            type: 'DEBIT',
+          },
+        ],
+      }),
+    ),
+  )
+
+  // Stopping after page 1 would under-report spend with no error at all --
+  // a ledger that looks healthy and is wrong.
+  await expect(client().listTransactions('acc-credit-1', '2026-05-24')).rejects.toThrow(
+    /PLUGGY_INVALID_PAGINATION/,
+  )
+})
+
+it('refuses an implausible totalPages instead of looping forever', async () => {
+  server.use(
+    http.get('https://api.pluggy.test/transactions', () =>
+      HttpResponse.json({ page: 1, totalPages: 100000, results: [] }),
+    ),
+  )
+
+  await expect(client().listTransactions('acc-credit-1', '2026-05-24')).rejects.toThrow(
+    /PLUGGY_TOO_MANY_PAGES/,
+  )
+})
+
+it('follows every page when totalPages is present', async () => {
+  const seen: string[] = []
+  server.use(
+    http.get('https://api.pluggy.test/transactions', ({ request }) => {
+      const page = new URL(request.url).searchParams.get('page')!
+      seen.push(page)
+      return HttpResponse.json({
+        page: Number(page),
+        totalPages: 2,
+        results: [
+          {
+            id: `tx-page-${page}`,
+            accountId: 'acc-credit-1',
+            description: 'PAGINATED',
+            amount: 10,
+            date: '2026-08-20T14:02:00.000Z',
+            type: 'DEBIT',
+          },
+        ],
+      })
+    }),
+  )
+
+  const transactions = await client().listTransactions('acc-credit-1', '2026-05-24')
+
+  expect(seen).toEqual(['1', '2'])
+  expect(transactions.map((t) => t.id)).toEqual(['tx-page-1', 'tx-page-2'])
 })

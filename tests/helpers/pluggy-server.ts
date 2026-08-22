@@ -1,12 +1,14 @@
 import { http, HttpResponse, type RequestHandler } from 'msw'
 import { setupServer } from 'msw/node'
+import { afterAll, afterEach, beforeAll } from 'vitest'
 import accounts from '../fixtures/pluggy/accounts.json'
 import item from '../fixtures/pluggy/item.json'
 import transactions from '../fixtures/pluggy/transactions.json'
 
 const BASE = 'https://api.pluggy.test'
 
-export function startPluggyServer(overrides: RequestHandler[] = []) {
+/** Builds a Pluggy mock server WITHOUT registering any lifecycle hooks. */
+export function createPluggyServer(overrides: RequestHandler[] = []) {
   return setupServer(
     ...overrides,
     http.post(`${BASE}/auth`, async ({ request }) => {
@@ -25,4 +27,23 @@ export function startPluggyServer(overrides: RequestHandler[] = []) {
       return HttpResponse.json({ ...transactions, results })
     }),
   )
+}
+
+/**
+ * Builds the server AND owns its whole lifecycle, resetHandlers() included.
+ * Three test files used to omit that reset; it was harmless only because they
+ * happened never to call server.use(), so the invariant held by coincidence.
+ * Registering the hooks here means no test file can forget.
+ *
+ * Call this at module scope of a test file (hooks must be registered during
+ * collection). Inside a running test, use createPluggyServer() instead.
+ */
+export function startPluggyServer(overrides: RequestHandler[] = []) {
+  const server = createPluggyServer(overrides)
+
+  beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+  afterEach(() => server.resetHandlers())
+  afterAll(() => server.close())
+
+  return server
 }

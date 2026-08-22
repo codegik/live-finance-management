@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, expect, it } from 'vitest'
+import { beforeEach, expect, it } from 'vitest'
 import { hashPassword } from '@/lib/auth/password'
 import { listAccounts, listConnections } from '@/lib/db/connections'
 import { createHousehold } from '@/lib/db/households'
@@ -9,8 +9,6 @@ import { startPluggyServer } from './helpers/pluggy-server'
 
 const server = startPluggyServer()
 
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
-afterAll(() => server.close())
 beforeEach(resetDb)
 
 function pluggy() {
@@ -26,6 +24,15 @@ async function seed() {
   const { householdId, userId } = await createHousehold(db, {
     name: 'Klassmann',
     owner: { email: 'inacio@example.com', name: 'Inacio', passwordHash: await hashPassword('pw') },
+  })
+  return { db, householdId, userId }
+}
+
+async function seedOther() {
+  const db = testDb()
+  const { householdId, userId } = await createHousehold(db, {
+    name: 'Other',
+    owner: { email: 'other@example.com', name: 'Other', passwordHash: await hashPassword('pw') },
   })
   return { db, householdId, userId }
 }
@@ -75,4 +82,50 @@ it('does not leak accounts across households', async () => {
   })
 
   expect(await listAccounts(db, other.householdId)).toHaveLength(0)
+})
+
+it('refuses to attach an item that already belongs to another household', async () => {
+  // pluggy_item_id is globally unique with no household component, and the
+  // itemId arrives from a request body. Without a household check, household
+  // B could post household A's itemId and overwrite A's connection row --
+  // the only write in the branch that could cross the boundary.
+  const { db, householdId: ownerHousehold, userId: ownerUser } = await seed()
+  await attachConnection(db, pluggy(), {
+    householdId: ownerHousehold,
+    ownerUserId: ownerUser,
+    itemId: 'item-nubank-1',
+  })
+
+  const { householdId: attackerHousehold, userId: attackerUser } = await seedOther()
+
+  // Different institution name on the hijack attempt, so "A's row is
+  // unchanged" is a claim with teeth rather than a coincidence of fixtures.
+  const { http, HttpResponse } = await import('msw')
+  server.use(
+    http.get('https://api.pluggy.test/items/item-nubank-1', () =>
+      HttpResponse.json({
+        id: 'item-nubank-1',
+        status: 'LOGIN_ERROR',
+        connector: { id: 999, name: 'Hijacked Bank' },
+        lastUpdatedAt: null,
+      }),
+    ),
+  )
+
+  await expect(
+    attachConnection(db, pluggy(), {
+      householdId: attackerHousehold,
+      ownerUserId: attackerUser,
+      itemId: 'item-nubank-1',
+    }),
+  ).rejects.toThrow('CONNECTION_OWNED_BY_ANOTHER_HOUSEHOLD')
+
+  const attackerConnections = await listConnections(db, attackerHousehold)
+  expect(attackerConnections).toHaveLength(0)
+  expect(await listAccounts(db, attackerHousehold)).toHaveLength(0)
+
+  const [owned] = await listConnections(db, ownerHousehold)
+  expect(owned.institution).toBe('Nubank')
+  expect(owned.status).toBe('UPDATED')
+  expect(owned.ownerUserId).toBe(ownerUser)
 })

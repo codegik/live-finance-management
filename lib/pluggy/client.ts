@@ -1,9 +1,18 @@
-import type {
-  PluggyAccount,
-  PluggyConfig,
-  PluggyItem,
-  PluggyTransaction,
+import { z } from 'zod'
+import {
+  pluggyTransactionSchema,
+  type PluggyAccount,
+  type PluggyConfig,
+  type PluggyItem,
+  type PluggyTransaction,
 } from './types'
+
+/**
+ * 500 transactions per page, so this covers 50k per account per sync -- far
+ * beyond a household's real volume. It exists so a nonsense `totalPages`
+ * cannot spin forever.
+ */
+const MAX_TRANSACTION_PAGES = 100
 
 export type PluggyClient = {
   createConnectToken(itemId?: string): Promise<string>
@@ -65,11 +74,30 @@ export function createPluggyClient(config: PluggyConfig): PluggyClient {
       let totalPages = 1
 
       do {
-        const body = await request<{ results: PluggyTransaction[]; totalPages: number }>(
+        const body = await request<{ results: unknown; totalPages: unknown }>(
           `/transactions?accountId=${accountId}&from=${from}&pageSize=500&page=${page}`,
         )
-        results.push(...body.results)
-        totalPages = body.totalPages
+
+        const parsed = z.array(pluggyTransactionSchema).safeParse(body.results)
+        if (!parsed.success) {
+          const detail = parsed.error.issues
+            .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
+            .join('; ')
+          throw new Error(`PLUGGY_INVALID_TRANSACTION:${accountId}:${detail}`)
+        }
+        results.push(...parsed.data)
+
+        // A missing or nonsense totalPages used to end the loop after page 1
+        // with no error, silently under-reporting spend. Refuse to guess.
+        const total = Number(body.totalPages)
+        if (!Number.isFinite(total) || total < 1) {
+          throw new Error(`PLUGGY_INVALID_PAGINATION:${accountId}:${String(body.totalPages)}`)
+        }
+        if (total > MAX_TRANSACTION_PAGES) {
+          throw new Error(`PLUGGY_TOO_MANY_PAGES:${accountId}:${total}`)
+        }
+
+        totalPages = total
         page += 1
       } while (page <= totalPages)
 

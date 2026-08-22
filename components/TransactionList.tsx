@@ -24,7 +24,12 @@ export function TransactionList({ days }: { days: LedgerDay[] }) {
               <li key={item.id} className="ledger__item">
                 <span className="ledger__description">{item.description}</span>
                 <span className="ledger__meta">
-                  {item.ownerName} · {item.institution} ·{item.accountLast4}
+                  {/* accountLast4 is null whenever Pluggy omits the account
+                      number, so join only the parts that exist -- a missing
+                      last4 must not leave a dangling separator. */}
+                  {[item.ownerName, item.institution, item.accountLast4]
+                    .filter(Boolean)
+                    .join(' · ')}
                 </span>
                 <span className="ledger__amount">{formatCents(item.amountCents)}</span>
               </li>

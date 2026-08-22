@@ -1,4 +1,4 @@
-import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from 'vitest'
+import { beforeEach, expect, it } from 'vitest'
 import { GET } from '@/app/api/cron/reconcile/route'
 import { hashPassword } from '@/lib/auth/password'
 import { createHousehold } from '@/lib/db/households'
@@ -12,9 +12,6 @@ import { startPluggyServer } from './helpers/pluggy-server'
 
 const server = startPluggyServer()
 
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
-afterEach(() => server.resetHandlers())
-afterAll(() => server.close())
 beforeEach(async () => {
   useTestEnv()
   await resetDb()
@@ -144,4 +141,61 @@ it('runs the real reconcile through the route on a valid secret', async () => {
   expect(body.succeeded).toHaveLength(1)
   expect(body.failed).toHaveLength(0)
   expect(await listTransactions(db, householdId)).not.toHaveLength(0)
+})
+
+it('reports 207 through the route when some connections fail and some succeed', async () => {
+  const { db, householdId, userId } = await seed()
+  await db.insert(connections).values({
+    householdId,
+    ownerUserId: userId,
+    pluggyItemId: 'item-broken',
+    institution: 'Broken Bank',
+    status: 'UPDATED',
+  })
+
+  const { http, HttpResponse } = await import('msw')
+  server.use(
+    http.get('https://api.pluggy.test/items/item-broken', () =>
+      HttpResponse.json({ error: 'boom' }, { status: 500 }),
+    ),
+  )
+
+  const response = await GET(cronRequest('Bearer cron-secret-value-1234'))
+  const body = await response.json()
+
+  // A partial reconcile must never report a clean 200: the run is not healthy,
+  // and the household's totals are missing a card.
+  expect(response.status).toBe(207)
+  expect(body.succeeded).toHaveLength(1)
+  expect(body.failed).toHaveLength(1)
+  expect(await listTransactions(db, householdId)).not.toHaveLength(0)
+})
+
+it('reports 500 through the route when every connection fails', async () => {
+  const db = testDb()
+  const { householdId, userId } = await createHousehold(db, {
+    name: 'Klassmann',
+    owner: { email: 'inacio@example.com', name: 'Inacio', passwordHash: await hashPassword('pw') },
+  })
+  await db.insert(connections).values({
+    householdId,
+    ownerUserId: userId,
+    pluggyItemId: 'item-broken',
+    institution: 'Broken Bank',
+    status: 'UPDATED',
+  })
+
+  const { http, HttpResponse } = await import('msw')
+  server.use(
+    http.get('https://api.pluggy.test/items/item-broken', () =>
+      HttpResponse.json({ error: 'boom' }, { status: 500 }),
+    ),
+  )
+
+  const response = await GET(cronRequest('Bearer cron-secret-value-1234'))
+  const body = await response.json()
+
+  expect(response.status).toBe(500)
+  expect(body.succeeded).toHaveLength(0)
+  expect(body.failed).toHaveLength(1)
 })
