@@ -28,8 +28,12 @@ try {
     clientSecret: env.PLUGGY_CLIENT_SECRET,
   })
 
-  const { succeeded, failed } = await reconcileAll(db, pluggy)
-  console.log(`reconcile finished: ${succeeded.length} succeeded, ${failed.length} failed`)
+  const { succeeded, failed, recategorized } = await reconcileAll(db, pluggy)
+  // recategorized belongs in the log: it is the only observable signal that a
+  // normalizer or Pluggy-mapping change actually landed on real rows.
+  console.log(
+    `reconcile finished: ${succeeded.length} succeeded, ${failed.length} failed, ${recategorized} recategorized`,
+  )
 
   if (failed.length > 0) {
     console.error('connections that failed to sync', failed)

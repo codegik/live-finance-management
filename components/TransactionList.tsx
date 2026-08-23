@@ -31,6 +31,9 @@ export function TransactionList({ days }: { days: LedgerDay[] }) {
                     .filter(Boolean)
                     .join(' · ')}
                 </span>
+                <span className={item.categoryName ? 'ledger__category' : 'ledger__category ledger__category--none'}>
+                  {item.categoryName ?? 'Uncategorized'}
+                </span>
                 <span className="ledger__amount">{formatCents(item.amountCents)}</span>
               </li>
             ))}

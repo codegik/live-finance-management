@@ -59,6 +59,10 @@ export const connectionStatus = pgEnum('connection_status', [
 
 export const accountType = pgEnum('account_type', ['CREDIT', 'BANK'])
 
+export const categorySourceEnum = pgEnum('category_source', ['PLUGGY', 'RULE', 'MANUAL'])
+
+export const ruleMatchTypeEnum = pgEnum('rule_match_type', ['EXACT', 'CONTAINS'])
+
 export const connections = pgTable(
   'connection',
   {
@@ -99,6 +103,57 @@ export const accounts = pgTable(
 export type Connection = typeof connections.$inferSelect
 export type Account = typeof accounts.$inferSelect
 
+export const categories = pgTable(
+  'category',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    householdId: uuid('household_id')
+      .notNull()
+      .references(() => households.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    // Null for household-created categories. Postgres treats NULLs as
+    // distinct in a unique index, so many null-keyed rows coexist happily.
+    seedKey: text('seed_key'),
+    sortOrder: integer('sort_order').notNull().default(0),
+    // Categories archive rather than delete: Slice 3 stores budgets per
+    // category per month, and a hard delete would strand historical spend.
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('category_seed_key_unique').on(t.householdId, t.seedKey),
+    index('category_household_idx').on(t.householdId, t.sortOrder),
+  ],
+)
+
+export const merchantRules = pgTable(
+  'merchant_rule',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    householdId: uuid('household_id')
+      .notNull()
+      .references(() => households.id, { onDelete: 'cascade' }),
+    matchType: ruleMatchTypeEnum('match_type').notNull(),
+    // Stored already normalized, so matching is symmetrical with the
+    // transaction side and needs no normalization at query time.
+    pattern: text('pattern').notNull(),
+    categoryId: uuid('category_id')
+      .notNull()
+      .references(() => categories.id, { onDelete: 'cascade' }),
+    // Lower wins. Inbox-created EXACT rules default to 100, hand-written
+    // CONTAINS rules to 200, so specific beats broad unless reordered.
+    priority: integer('priority').notNull().default(100),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('merchant_rule_household_idx').on(t.householdId, t.priority),
+    uniqueIndex('merchant_rule_unique').on(t.householdId, t.matchType, t.pattern),
+  ],
+)
+
+export type Category = typeof categories.$inferSelect
+export type MerchantRule = typeof merchantRules.$inferSelect
+
 export const transactions = pgTable(
   'transaction',
   {
@@ -112,12 +167,18 @@ export const transactions = pgTable(
     description: text('description').notNull(),
     merchantRaw: text('merchant_raw'),
     pluggyCategory: text('pluggy_category'),
+    merchantNormalized: text('merchant_normalized'),
+    categoryId: uuid('category_id').references(() => categories.id),
+    categorySource: categorySourceEnum('category_source'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     uniqueIndex('transaction_pluggy_unique').on(t.pluggyTransactionId),
     index('transaction_account_date_idx').on(t.accountId, t.date),
+    // Slice 3 aggregates spend with GROUP BY category_id; this is that index.
+    index('transaction_category_idx').on(t.categoryId),
+    index('transaction_merchant_idx').on(t.merchantNormalized),
   ],
 )
 
