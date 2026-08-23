@@ -1,0 +1,1 @@
+CREATE INDEX "alert_state_household_idx" ON "alert_state" USING btree ("household_id","period_month");

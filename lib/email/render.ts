@@ -8,6 +8,12 @@ import type { AlertCrossing } from '@/lib/domain/alerts'
  *
  * Plain text only. An alert is four lines of numbers; HTML would add a
  * rendering surface and no information.
+ *
+ * Relies on two invariants it does not itself check: `crossings` is
+ * non-empty (the caller in lib/alerts/evaluate.ts returns early when there
+ * is nothing to fire) and every crossing's `budgetCents` is greater than
+ * zero (evaluateAlerts in lib/domain/alerts.ts only emits a crossing when
+ * budgetCents > 0). Both are guaranteed elsewhere, not here.
  */
 
 const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' })

@@ -36,6 +36,8 @@ try {
     pluggy,
     { mailer },
   )
+  // recategorized belongs in the log: it is the only observable signal that a
+  // normalizer or Pluggy-mapping change actually landed on real rows.
   console.log(
     `reconcile finished: ${succeeded.length} succeeded, ${failed.length} failed, ${recategorized} recategorized, ${transfersFlagged} transfers flagged, ${alerted} alerts sent`,
   )

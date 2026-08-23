@@ -6,7 +6,7 @@ import { listFiredAlerts } from '@/lib/db/alerts'
 import { clearBudget, setBudget } from '@/lib/db/budgets'
 import { archiveCategory, listCategories } from '@/lib/db/categories'
 import { createHousehold } from '@/lib/db/households'
-import { connections, transactions } from '@/lib/db/schema'
+import { connections, transactions, users } from '@/lib/db/schema'
 import { resetDb, testDb, useTestEnv } from './helpers/db'
 import { createRecordingMailer } from './helpers/mailer'
 import { insertTransaction, seedAccount } from './helpers/transactions'
@@ -107,6 +107,35 @@ it('notifies once when a category crosses 80 per cent, and re-arms when the budg
   await spend(householdId, accountId, supermarket, 80_000)
   await evaluateAndNotify(db, mailer, householdId, { now: NOW })
   expect(sent).toHaveLength(2)
+})
+
+it('mails every user in the household, not just the one who owns the connection', async () => {
+  // Every existing test seeds a single-user household, so nothing catches a
+  // future .limit(1) or an owner-only filter -- this is the goal stated in
+  // the spec: "email to every user in the household".
+  const { db, householdId, accountId } = await seedHousehold()
+  await db.insert(users).values({
+    householdId,
+    email: 'wife@example.com',
+    name: 'Wife',
+    passwordHash: await hashPassword('pw'),
+  })
+  const supermarket = await categoryNamed(householdId, 'Supermercado')
+  await setBudget(db, householdId, {
+    categoryId: supermarket,
+    period: '2026-08',
+    amountCents: 100_000,
+  })
+  await spend(householdId, accountId, supermarket, 85_000)
+  const { mailer, sent } = createRecordingMailer()
+
+  await evaluateAndNotify(db, mailer, householdId, { now: NOW })
+
+  expect(sent).toHaveLength(1)
+  expect(sent[0].to).toEqual(
+    expect.arrayContaining(['inacio@example.com', 'wife@example.com']),
+  )
+  expect(sent[0].to).toHaveLength(2)
 })
 
 it('batches every crossing in one evaluation into a single message', async () => {

@@ -47,7 +47,7 @@ it('names the category in the subject when one category crossed', () => {
   expect(text).toContain('August 2026')
   // pt-BR currency formatting puts a NON-BREAKING space (U+00A0) after R$.
   // Spelling it explicitly is what stops this asserting against correct code.
-  expect(text).toContain('Supermercado — R$ 1.240,00 of R$ 1.200,00 (103%)')
+  expect(text).toContain('Supermercado — R$\u00a01.240,00 of R$\u00a01.200,00 (103%)')
 })
 
 it('still names the category when it crossed both thresholds at once', () => {

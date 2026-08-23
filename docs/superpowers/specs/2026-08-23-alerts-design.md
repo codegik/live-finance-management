@@ -281,3 +281,27 @@ database is not.
 - **Alert fatigue.** Two thresholds per category per month is the ceiling.
   If that still proves noisy, the lever is dropping 80% rather than adding
   preferences.
+- **Concurrent evaluation can duplicate a mail.** The nightly path evaluates
+  each household once, but the webhook path evaluates per Pluggy item. Once
+  a second connection exists (Slice 6), two `item/updated` webhooks for one
+  household can be in flight at once: both read an empty fired set, both
+  send, and `recordFired`'s `onConflictDoNothing` only collapses the rows
+  afterwards. Send-before-record widens this window deliberately. Accepted
+  for now as the same class as the crash duplicate already documented — a
+  duplicate is cheaper than a lost alert — but Slice 6 should serialise per
+  household, e.g. with `pg_advisory_xact_lock(hashtext(household_id))` at the
+  top of the evaluation, before the second card lands.
+- **A crossing in the final minutes of a month is never mailed.** Evaluation
+  only ever considers the current period, so a purchase at 23:50 on the 31st
+  whose webhook arrives at 00:05 on the 1st is evaluated against the new
+  month, where spend is near zero. The old month's crossing is never
+  revisited. The inverse — a false alarm on the boundary — cannot happen,
+  since a new month starts at zero. Accepted: an alert about a month that
+  has just closed has little value, and fixing it means evaluating more than
+  the current period.
+- **`alert_state` rows are never pruned.** Nothing reads or deletes a row
+  once its period has passed; `clearFired` only ever touches the current
+  period. Growth is bounded at roughly two rows per category per month per
+  household, so this is a note rather than a problem — but there is no
+  cleanup path, and since in-app alert history is a non-goal, nothing will
+  ever read them either.

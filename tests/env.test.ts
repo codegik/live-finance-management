@@ -56,3 +56,18 @@ it('requires the alert channel to be configured', () => {
     loadEnv({ ...valid, ALERT_EMAIL_FROM: 'not-an-email' } as unknown as NodeJS.ProcessEnv),
   ).toThrow()
 })
+
+it('rejects the .env.example placeholder sender, even though it is a syntactically valid email', () => {
+  expect(() =>
+    loadEnv({ ...valid, ALERT_EMAIL_FROM: 'alerts@yourdomain.com' } as unknown as NodeJS.ProcessEnv),
+  ).toThrow(/placeholder/i)
+})
+
+it('accepts the "Name <email>" display form Resend itself documents', () => {
+  expect(() =>
+    loadEnv({
+      ...valid,
+      ALERT_EMAIL_FROM: 'Alertas <alerts@casa.com.br>',
+    } as unknown as NodeJS.ProcessEnv),
+  ).not.toThrow()
+})

@@ -208,6 +208,7 @@ export const alertStates = pgTable(
   },
   (t) => [
     uniqueIndex('alert_state_unique').on(t.householdId, t.categoryId, t.periodMonth, t.threshold),
+    index('alert_state_household_idx').on(t.householdId, t.periodMonth),
   ],
 )
 

@@ -147,3 +147,48 @@ it('mails the household when the synced item crosses a budget threshold', async 
   expect(sentMail[0].subject).toContain('Supermercado')
   expect(sentMail[0].to).toEqual(['inacio@example.com'])
 })
+
+it('still returns 200 and lands the sync when Resend is down', async () => {
+  // lib/sync/dispatch.ts wraps evaluateAndNotify in a try/catch. Without it,
+  // a Resend outage would 500 this webhook and Pluggy would retry the whole
+  // sync over a mail that was never the point. startPluggyServer's own
+  // afterEach(() => server.resetHandlers()) cleans up this override.
+  const { db, householdId } = await seedConnection()
+  const now = new Date()
+  const [account] = await db
+    .select({ id: accounts.id })
+    .from(accounts)
+    .innerJoin(connections, eq(accounts.connectionId, connections.id))
+    .where(eq(connections.householdId, householdId))
+    .limit(1)
+  const supermarket = (await listCategories(db, householdId)).find(
+    (c) => c.name === 'Supermercado',
+  )!
+  const txId = await insertTransaction(db, account.id, {
+    description: 'ZAFFARI',
+    amountCents: 90_000,
+    date: saoPauloToday(now),
+  })
+  await db
+    .update(transactions)
+    .set({ categoryId: supermarket.id, categorySource: 'MANUAL' })
+    .where(eq(transactions.id, txId))
+  await setBudget(db, householdId, {
+    categoryId: supermarket.id,
+    period: saoPauloPeriod(now),
+    amountCents: 100_000,
+  })
+  server.use(
+    http.post('https://api.resend.com/emails', () => new HttpResponse(null, { status: 500 })),
+  )
+
+  const response = await POST(
+    webhookRequest('webhook-token-value-1234', {
+      event: 'item/updated',
+      itemId: 'item-nubank-1',
+    }),
+  )
+
+  expect(response.status).toBe(200)
+  expect(await listTransactions(db, householdId)).not.toHaveLength(0)
+})
