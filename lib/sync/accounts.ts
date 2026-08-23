@@ -38,6 +38,10 @@ export async function refreshAccounts(
         name: remote.name,
         last4: remote.number?.slice(-4) ?? null,
         dueDay: dueDayFrom(remote),
+        // Pluggy's account payload has no closing-day field, only
+        // creditData.balanceDueDate (the due day). This is structurally
+        // always null, not a bug waiting to be found -- a household's own
+        // override (closingDayOverride) is the only way this ever gets set.
         closingDay: null,
         creditLimitCents:
           remote.creditData?.creditLimit == null

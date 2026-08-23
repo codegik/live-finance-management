@@ -1,12 +1,26 @@
 import { beforeEach, expect, it, vi } from 'vitest'
 import { hashPassword } from '@/lib/auth/password'
 import { createHousehold } from '@/lib/db/households'
-import { listConnectionDetails } from '@/lib/db/connections'
+import { listAccounts, listConnectionDetails } from '@/lib/db/connections'
 import { accounts, connections } from '@/lib/db/schema'
 import { listTransactions } from '@/lib/db/transactions'
+import { createPluggyClient } from '@/lib/pluggy/client'
+import { refreshAccounts } from '@/lib/sync/accounts'
+import { attachConnection } from '@/lib/sync/connect'
 import { eq } from 'drizzle-orm'
 import { resetDb, testDb, useTestEnv } from './helpers/db'
+import { startPluggyServer } from './helpers/pluggy-server'
 import { insertTransaction, seedAccount } from './helpers/transactions'
+
+const server = startPluggyServer()
+
+function pluggy() {
+  return createPluggyClient({
+    apiUrl: 'https://api.pluggy.test',
+    clientId: 'client-id',
+    clientSecret: 'client-secret',
+  })
+}
 
 const session = vi.hoisted(() => ({ current: { householdId: '', id: '' } }))
 vi.mock('@/lib/auth/session', () => ({
@@ -93,37 +107,39 @@ it('refuses to remove another household connection', async () => {
   expect(survivors).toHaveLength(1)
 })
 
-it('keeps an overridden due day across a sync that rewrites the Pluggy value', async () => {
+it('keeps an overridden due day across a real refreshAccounts sync that rewrites the Pluggy value', async () => {
   const db = testDb()
   const { householdId, userId } = await createHousehold(db, {
     name: 'Klassmann',
     owner: { email: 'inacio@example.com', name: 'Inacio', passwordHash: await hashPassword('pw') },
   })
   session.current = { householdId, id: userId }
-  const [connection] = await db
-    .insert(connections)
-    .values({
-      householdId,
-      ownerUserId: userId,
-      pluggyItemId: 'item-nubank-1',
-      institution: 'Nubank',
-      status: 'UPDATED',
-      lastSyncedAt: new Date(),
-    })
-    .returning({ id: connections.id })
-  const accountId = await seedAccount(db, connection.id)
-  await db.update(accounts).set({ dueDay: 10 }).where(eq(accounts.id, accountId))
+  // attachConnection runs refreshAccounts itself, against the Pluggy fake:
+  // the fixture's acc-credit-1 reports balanceDueDate 2026-09-10, so the
+  // credit account is seeded with dueDay 10 exactly like a real connect.
+  const { connectionId } = await attachConnection(db, pluggy(), {
+    householdId,
+    ownerUserId: userId,
+    itemId: 'item-nubank-1',
+  })
+  const [creditAccount] = (await listAccounts(db, householdId)).filter((a) => a.type === 'CREDIT')
+  const accountId = creditAccount.id
 
   const state = await saveAccountDaysAction(EMPTY, form({ accountId, dueDay: '15', closingDay: '3' }))
   expect(state.error).toBeNull()
 
-  // What a sync does: rewrite the Pluggy-sourced column. The override must
-  // survive it, which is the entire reason it is a separate column.
-  await db.update(accounts).set({ dueDay: 10 }).where(eq(accounts.id, accountId))
+  // The real sync path, not a hand-rolled update: this is what would catch
+  // refreshAccounts itself accidentally writing the override columns. The
+  // fixture reports the same dueDay (10) again, so the only way this
+  // assertion can pass is if refreshAccounts never touches the override
+  // columns and the coalesce in listConnectionDetails resolves correctly.
+  await refreshAccounts(db, pluggy(), connectionId, 'item-nubank-1')
 
   const [detail] = await listConnectionDetails(db, householdId)
-  expect(detail.accounts[0].dueDay).toBe(15)
-  expect(detail.accounts[0].closingDay).toBe(3)
+  const account = detail.accounts.find((a) => a.id === accountId)!
+  expect(account.dueDay).toBe(15)
+  expect(account.closingDay).toBe(3)
+  expect(account.pluggyDueDay).toBe(10)
 })
 
 it('rejects a day outside the month', async () => {
@@ -181,4 +197,37 @@ it('refuses to set days on another household account', async () => {
   const [row] = await db.select().from(accounts).where(eq(accounts.id, accountId))
   expect(row.dueDayOverride).toBeNull()
   expect(row.closingDayOverride).toBeNull()
+})
+
+// A hand-edited form field or stale client can send a connectionId /
+// accountId that is not a UUID at all. Postgres rejects that shape with
+// 22P02 ("invalid input syntax for type uuid") inside eq(<uuid column>, ...)
+// -- a thrown error, not an empty result -- unless it is caught before the
+// db layer. These must resolve to the same "doesn't exist" state as a
+// well-formed but unknown id, not throw.
+it('treats a non-UUID connectionId as unknown rather than throwing', async () => {
+  const { householdId, userId } = await createHousehold(testDb(), {
+    name: 'Klassmann',
+    owner: { email: 'inacio@example.com', name: 'Inacio', passwordHash: await hashPassword('pw') },
+  })
+  session.current = { householdId, id: userId }
+
+  const state = await removeConnectionAction(EMPTY, form({ connectionId: 'not-a-uuid' }))
+
+  expect(state.error).toBe(UNKNOWN_CONNECTION_ERROR)
+})
+
+it('treats a non-UUID accountId as unknown rather than throwing', async () => {
+  const { householdId, userId } = await createHousehold(testDb(), {
+    name: 'Klassmann',
+    owner: { email: 'inacio@example.com', name: 'Inacio', passwordHash: await hashPassword('pw') },
+  })
+  session.current = { householdId, id: userId }
+
+  const state = await saveAccountDaysAction(
+    EMPTY,
+    form({ accountId: 'not-a-uuid', dueDay: '15', closingDay: '' }),
+  )
+
+  expect(state.error).toBe(UNKNOWN_ACCOUNT_ERROR)
 })

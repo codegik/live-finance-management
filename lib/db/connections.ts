@@ -46,9 +46,18 @@ export type ConnectionAccount = {
   type: 'CREDIT' | 'BANK'
   name: string
   last4: string | null
-  // Resolved: coalesce(household override, Pluggy's own value).
+  // Resolved: coalesce(household override, Pluggy's own value). This is
+  // what budgeting/invoice logic elsewhere would read; it is deliberately
+  // NOT what a form input should default to -- defaulting an input to the
+  // resolved value would submit Pluggy's own figure back as an override the
+  // household never chose to set.
   dueDay: number | null
   closingDay: number | null
+  // The household's own override, unresolved. null means "no override" --
+  // this is what a form input should default to, so saving one field never
+  // silently pins the other.
+  dueDayOverride: number | null
+  closingDayOverride: number | null
   // Pluggy's own value, unresolved -- the UI shows this alongside the
   // resolved value so a household can see what the bank reports even after
   // overriding it.
@@ -105,6 +114,8 @@ export async function listConnectionDetails(
         last4: account.last4,
         dueDay: account.dueDayOverride ?? account.dueDay,
         closingDay: account.closingDayOverride ?? account.closingDay,
+        dueDayOverride: account.dueDayOverride,
+        closingDayOverride: account.closingDayOverride,
         pluggyDueDay: account.dueDay,
         pluggyClosingDay: account.closingDay,
         dueDayOverridden: account.dueDayOverride != null,

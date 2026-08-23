@@ -11,6 +11,14 @@
  * invoices the household has paid, which appear on the card as credits. Left
  * in, they make every total wrong by the value of every invoice ever paid.
  *
+ * That verification is CARD-SIDE ONLY. No checking (BANK) account has ever
+ * been connected, so nothing here confirms how this household's bank labels
+ * the same invoice payment when it *leaves* checking -- which is exactly the
+ * arithmetic hazard this slice exists to prevent: an outgoing card payment
+ * counted as checking-account spend would inflate a budget by the invoice
+ * total. Treat the transfer strings as UNVERIFIED for BANK accounts, and
+ * check them against the first real checking sync before trusting them there.
+ *
  * The income strings are UNVERIFIED. No checking account is connected yet, so
  * they are taken from Pluggy's published taxonomy rather than observed from
  * real data. They matter for the opposite reason: on a card a CREDIT is an

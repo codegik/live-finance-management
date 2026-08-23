@@ -7,6 +7,7 @@ import { deleteConnection, setAccountDays } from '@/lib/db/connections'
 import { SAVED_MESSAGE } from '../categories/state'
 import {
   type ConnectionState,
+  idSchema,
   INVALID_DAY_ERROR,
   REMOVED_MESSAGE,
   UNKNOWN_ACCOUNT_ERROR,
@@ -19,7 +20,11 @@ export async function removeConnectionAction(
 ): Promise<ConnectionState> {
   const session = await requireSession()
   const connectionId = String(formData.get('connectionId') ?? '')
-  if (!connectionId) return { error: UNKNOWN_CONNECTION_ERROR, message: null }
+  // A malformed id (hand-edited form, stale client) must read as "doesn't
+  // exist" rather than crash the eq(uuid, ...) below with Postgres 22P02.
+  if (!idSchema.safeParse(connectionId).success) {
+    return { error: UNKNOWN_CONNECTION_ERROR, message: null }
+  }
 
   // A connection id belonging to another household deletes nothing, and is
   // reported as gone rather than as forbidden -- from this session's point of
@@ -49,7 +54,11 @@ export async function saveAccountDaysAction(
 ): Promise<ConnectionState> {
   const session = await requireSession()
   const accountId = String(formData.get('accountId') ?? '')
-  if (!accountId) return { error: UNKNOWN_ACCOUNT_ERROR, message: null }
+  // Same 22P02 hazard as removeConnectionAction: reject a non-UUID shape
+  // before it reaches eq(accounts.id, accountId) in setAccountDays.
+  if (!idSchema.safeParse(accountId).success) {
+    return { error: UNKNOWN_ACCOUNT_ERROR, message: null }
+  }
 
   const dueDay = parseDay(formData.get('dueDay'))
   const closingDay = parseDay(formData.get('closingDay'))

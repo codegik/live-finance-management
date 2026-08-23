@@ -5,6 +5,7 @@ import { getDb } from '@/lib/db/client'
 import { countConnectionTransactions, listConnectionDetails } from '@/lib/db/connections'
 import { HOUSEHOLD_TIME_ZONE } from '@/lib/domain/dates'
 import { AccountDaysForm, RemoveConnectionForm } from './ConnectionForms'
+import { idSchema } from './state'
 
 export const dynamic = 'force-dynamic'
 
@@ -36,8 +37,13 @@ export default async function ConnectionsSettingsPage({
   const { remove } = await searchParams
   const db = getDb()
   const details = await listConnectionDetails(db, session.householdId)
-  const removing = remove
-    ? { id: remove, count: await countConnectionTransactions(db, session.householdId, remove) }
+  // A hand-edited ?remove= that is not a UUID would otherwise reach
+  // eq(connections.id, ...) inside countConnectionTransactions and 500 the
+  // page with Postgres 22P02. Treat it the same as an id that simply does
+  // not match any connection: no confirmation renders.
+  const removeId = remove && idSchema.safeParse(remove).success ? remove : null
+  const removing = removeId
+    ? { id: removeId, count: await countConnectionTransactions(db, session.householdId, removeId) }
     : null
 
   return (
@@ -74,8 +80,8 @@ export default async function ConnectionsSettingsPage({
                       {account.type === 'CREDIT' ? (
                         <AccountDaysForm
                           accountId={account.id}
-                          dueDay={account.dueDay}
-                          closingDay={account.closingDay}
+                          dueDayOverride={account.dueDayOverride}
+                          closingDayOverride={account.closingDayOverride}
                           pluggyDueDay={account.pluggyDueDay}
                           pluggyClosingDay={account.pluggyClosingDay}
                           dueDayOverridden={account.dueDayOverridden}
