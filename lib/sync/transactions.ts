@@ -3,6 +3,7 @@ import type { Db } from '@/lib/db/client'
 import { accounts, connections, transactions } from '@/lib/db/schema'
 import { mapTransaction } from '@/lib/pluggy/mapper'
 import type { PluggyClient } from '@/lib/pluggy/client'
+import { recategorize } from './categorize'
 
 /**
  * Pluggy's v2 transactions endpoint has no transaction-date filter, so a
@@ -33,13 +34,14 @@ export async function syncConnection(
     .where(eq(accounts.connectionId, connectionId))
 
   let upserted = 0
+  const touched: string[] = []
 
   for (const account of localAccounts) {
     const remote = await pluggy.listTransactions(account.pluggyAccountId)
 
     for (const tx of remote) {
       const row = mapTransaction(tx, account.id)
-      await db
+      const [written] = await db
         .insert(transactions)
         .values(row)
         .onConflictDoUpdate({
@@ -54,9 +56,15 @@ export async function syncConnection(
             updatedAt: new Date(),
           },
         })
+        .returning({ id: transactions.id })
+      touched.push(written.id)
       upserted += 1
     }
   }
+
+  // Categorize what this sync touched. MANUAL rows are excluded inside
+  // recategorize, which is what makes a hand-set category survive.
+  await recategorize(db, { householdId: connection.householdId, transactionIds: touched })
 
   await db
     .update(connections)
