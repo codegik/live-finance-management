@@ -8,14 +8,20 @@ import { getLedgerView } from '@/lib/views/ledger'
 
 export const dynamic = 'force-dynamic'
 
-export default async function LedgerPage() {
+export default async function LedgerPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ transfers?: string }>
+}) {
   // requireSession() throws on no session -- correct for API routes, but a
   // server component that lets that escape renders Next's generic 500 page.
   // "You're not signed in" isn't a server error; send the user to /signin
   // instead. Any other failure still propagates and surfaces as a 500.
   const session = await requireSession().catch(toSignInOrThrow)
+  const { transfers } = await searchParams
+  const includeTransfers = transfers === '1'
 
-  const view = await getLedgerView(getDb(), session.householdId)
+  const view = await getLedgerView(getDb(), session.householdId, { includeTransfers })
 
   return (
     <main className="page">
@@ -26,6 +32,9 @@ export default async function LedgerPage() {
             {view.uncategorizedCount} to categorize
           </Link>
         ) : null}
+        <Link href={includeTransfers ? '/ledger' : '/ledger?transfers=1'}>
+          {includeTransfers ? 'Hide transfers' : 'Show transfers'}
+        </Link>
         <ConnectCardButton />
       </header>
       <StaleBanner health={view.health} />

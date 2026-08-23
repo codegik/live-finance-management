@@ -1,12 +1,15 @@
 import { beforeEach, expect, it } from 'vitest'
 import { hashPassword } from '@/lib/auth/password'
 import { createHousehold } from '@/lib/db/households'
+import { connections } from '@/lib/db/schema'
 import { createPluggyClient } from '@/lib/pluggy/client'
 import { attachConnection } from '@/lib/sync/connect'
 import { syncConnection } from '@/lib/sync/transactions'
+import { refreshTransferFlags } from '@/lib/sync/transfers'
 import { getLedgerView } from '@/lib/views/ledger'
 import { resetDb, testDb, useTestEnv } from './helpers/db'
 import { startPluggyServer } from './helpers/pluggy-server'
+import { insertTransaction, seedAccount } from './helpers/transactions'
 
 const server = startPluggyServer()
 
@@ -117,4 +120,26 @@ it("carries each transaction's category and the uncategorized count", async () =
   const fee = view.days.flatMap((d) => d.items).find((i) => i.description === 'TARIFA MANUTENCAO CONTA')!
   expect(fee.categoryName).toBeNull()
   expect(view.uncategorizedCount).toBeGreaterThan(0)
+})
+
+it('hides transfers by default and shows them on request', async () => {
+  const { db, householdId } = await seedSynced()
+  const [connection] = await db.select().from(connections).limit(1)
+  const accountId = await seedAccount(db, connection.id)
+  await insertTransaction(db, accountId, {
+    description: 'PAGAMENTO FATURA',
+    amountCents: -100_000,
+    date: '2026-08-22',
+    pluggyCategory: 'Credit card payment',
+  })
+  await refreshTransferFlags(db, householdId)
+
+  const hidden = await getLedgerView(db, householdId)
+  const shown = await getLedgerView(db, householdId, { includeTransfers: true })
+
+  const descriptions = (view: typeof hidden) => view.days.flatMap((d) => d.items).map((i) => i.description)
+  expect(descriptions(hidden)).not.toContain('PAGAMENTO FATURA')
+  expect(descriptions(shown)).toContain('PAGAMENTO FATURA')
+  expect(hidden.includingTransfers).toBe(false)
+  expect(shown.includingTransfers).toBe(true)
 })

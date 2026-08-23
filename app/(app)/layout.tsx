@@ -16,10 +16,19 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       <nav className="nav">
         <ul className="nav__list">
           <li>
+            <Link href="/dashboard">Dashboard</Link>
+          </li>
+          <li>
             <Link href="/ledger">Ledger</Link>
           </li>
           <li>
             <Link href="/inbox">Inbox</Link>
+          </li>
+          <li>
+            <Link href="/forward">Forward</Link>
+          </li>
+          <li>
+            <Link href="/budgets">Budgets</Link>
           </li>
           <li>
             <Link href="/settings/categories">Categories</Link>
