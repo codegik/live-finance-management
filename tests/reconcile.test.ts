@@ -1,6 +1,7 @@
 import { eq, sql as raw } from 'drizzle-orm'
-import { beforeEach, expect, it } from 'vitest'
+import { beforeEach, expect, it, vi } from 'vitest'
 import { GET } from '@/app/api/cron/reconcile/route'
+import * as alertsEvaluate from '@/lib/alerts/evaluate'
 import { hashPassword } from '@/lib/auth/password'
 import { setBudget } from '@/lib/db/budgets'
 import { listCategories } from '@/lib/db/categories'
@@ -18,11 +19,28 @@ import { createRecordingMailer } from './helpers/mailer'
 import { startPluggyServer } from './helpers/pluggy-server'
 import { insertTransaction, seedAccount } from './helpers/transactions'
 
+// Spied rather than stubbed: the real evaluateAndNotify still runs (this
+// stays an integration test), but the spy lets tests below assert HOW MANY
+// TIMES it was called -- something the mail count alone cannot prove, since
+// evaluateAndNotify is idempotent per (householdId, categoryId, threshold,
+// period). If a future edit moved the alert call into the per-connection
+// loop, the second connection's call would just no-op against the
+// already-fired threshold: `sent` would still have length 1 and a
+// mail-count-only assertion would not catch the regression.
+vi.mock('@/lib/alerts/evaluate', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/alerts/evaluate')>()
+  return {
+    ...actual,
+    evaluateAndNotify: vi.fn(actual.evaluateAndNotify),
+  }
+})
+
 const server = startPluggyServer()
 
 beforeEach(async () => {
   useTestEnv()
   await resetDb()
+  vi.mocked(alertsEvaluate.evaluateAndNotify).mockClear()
 })
 
 function pluggy() {
@@ -422,6 +440,14 @@ it('sends one alert message per reconcile even when the household has two connec
 
   expect(sent).toHaveLength(1)
   expect(sent[0].subject).toContain('Supermercado')
+  // The mail count alone does not prove this: evaluateAndNotify is
+  // idempotent per (householdId, categoryId, threshold, period), so a
+  // regression that moved the call into the per-connection loop would still
+  // send exactly one mail -- the second connection's call would just see the
+  // threshold already fired and no-op. Asserting the call count is what
+  // actually distinguishes "evaluated once per household" from "evaluated
+  // once per connection, masked by idempotency".
+  expect(alertsEvaluate.evaluateAndNotify).toHaveBeenCalledTimes(1)
 })
 
 it('reports a reconcile as succeeded even when the alert mail fails', async () => {
