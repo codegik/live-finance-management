@@ -36,6 +36,11 @@ export const pluggyTransactionSchema = z.object({
   description: z.string(),
   descriptionRaw: z.string().nullish(),
   amount: z.number().finite(),
+  // Present only when the transaction was made in another currency: `amount`
+  // is then the foreign figure and this is the account-currency one. Verified
+  // against a live payload — a USD 31.89 purchase carries 171.25 here.
+  amountInAccountCurrency: z.number().finite().nullish(),
+  currencyCode: z.string().nullish(),
   date: z.string().min(1),
   type: z.enum(['DEBIT', 'CREDIT']),
   category: z.string().nullish(),

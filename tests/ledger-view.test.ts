@@ -51,9 +51,11 @@ it('groups transactions by day, newest first, with a daily total', async () => {
   expect(view.days.map((d) => d.date)).toEqual([
     '2026-08-21',
     '2026-08-20',
+    // A foreign-currency purchase, stored at its account-currency value.
+    '2026-08-19',
     '2026-08-10',
-    // tx-date-only arrives as an exact UTC midnight, i.e. a calendar date
-    // with no time of day. It must stay on the 1st, not slide into July.
+    // tx-date-only arrives padded to Sao Paulo midnight (03:00Z), which is
+    // how Pluggy actually spells a calendar date. It must stay on the 1st.
     '2026-08-01',
     '2026-07-31',
   ])

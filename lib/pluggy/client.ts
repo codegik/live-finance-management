@@ -9,8 +9,8 @@ import {
 
 /**
  * 500 transactions per page, so this covers 50k per account per sync -- far
- * beyond a household's real volume. It exists so a nonsense `totalPages`
- * cannot spin forever.
+ * beyond a household's real volume. It exists so a server that keeps handing
+ * back a cursor cannot spin forever.
  */
 const MAX_TRANSACTION_PAGES = 100
 
@@ -18,7 +18,12 @@ export type PluggyClient = {
   createConnectToken(itemId?: string): Promise<string>
   getItem(itemId: string): Promise<PluggyItem>
   listAccounts(itemId: string): Promise<PluggyAccount[]>
-  listTransactions(accountId: string, from: string): Promise<PluggyTransaction[]>
+  /**
+   * Every transaction for the account. v2 has no transaction-date filter, so
+   * a window cannot be requested server-side; the idempotent upsert makes
+   * re-reading the full history safe.
+   */
+  listTransactions(accountId: string): Promise<PluggyTransaction[]>
 }
 
 export function createPluggyClient(config: PluggyConfig): PluggyClient {
@@ -68,14 +73,20 @@ export function createPluggyClient(config: PluggyConfig): PluggyClient {
       return body.results
     },
 
-    async listTransactions(accountId, from) {
+    async listTransactions(accountId) {
       const results: PluggyTransaction[] = []
-      let page = 1
-      let totalPages = 1
+      // v2 returns `next` as a complete query string and omits it on the last
+      // page. There is no page/pageSize, and no transaction-date filter.
+      let query: string | null = `?accountId=${encodeURIComponent(accountId)}`
+      let pages = 0
 
-      do {
-        const body = await request<{ results: unknown; totalPages: unknown }>(
-          `/transactions?accountId=${accountId}&from=${from}&pageSize=500&page=${page}`,
+      while (query) {
+        if (++pages > MAX_TRANSACTION_PAGES) {
+          throw new Error(`PLUGGY_TOO_MANY_PAGES:${accountId}:${pages}`)
+        }
+
+        const body: { results: unknown; next?: unknown } = await request(
+          `/v2/transactions${query}`,
         )
 
         const parsed = z.array(pluggyTransactionSchema).safeParse(body.results)
@@ -87,19 +98,11 @@ export function createPluggyClient(config: PluggyConfig): PluggyClient {
         }
         results.push(...parsed.data)
 
-        // A missing or nonsense totalPages used to end the loop after page 1
-        // with no error, silently under-reporting spend. Refuse to guess.
-        const total = Number(body.totalPages)
-        if (!Number.isFinite(total) || total < 1) {
-          throw new Error(`PLUGGY_INVALID_PAGINATION:${accountId}:${String(body.totalPages)}`)
-        }
-        if (total > MAX_TRANSACTION_PAGES) {
-          throw new Error(`PLUGGY_TOO_MANY_PAGES:${accountId}:${total}`)
-        }
-
-        totalPages = total
-        page += 1
-      } while (page <= totalPages)
+        // Anything other than a usable cursor ends the walk. A non-string
+        // `next` is not a page we can fetch, so treating it as the end is the
+        // only honest reading — and the page cap above bounds the other way.
+        query = typeof body.next === 'string' && body.next.length > 0 ? body.next : null
+      }
 
       return results
     },

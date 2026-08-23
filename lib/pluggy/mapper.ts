@@ -8,7 +8,11 @@ export function mapTransaction(remote: PluggyTransaction, accountId: string): Ne
     accountId,
     pluggyTransactionId: remote.id,
     date: toSaoPauloDate(remote.date),
-    amountCents: toCentavos(remote.amount, remote.type),
+    // A foreign-currency purchase puts the foreign figure in `amount`; the
+    // amount actually charged to the card is amountInAccountCurrency. Using
+    // `amount` understates the spend, which is the failure this ledger exists
+    // to avoid.
+    amountCents: toCentavos(remote.amountInAccountCurrency ?? remote.amount, remote.type),
     description: remote.descriptionRaw ?? remote.description,
     merchantRaw: remote.merchant?.name ?? remote.merchant?.businessName ?? null,
     pluggyCategory: remote.category ?? null,

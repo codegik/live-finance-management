@@ -1,12 +1,12 @@
 {
-  "page": 1,
-  "totalPages": 1,
   "results": [
     {
       "id": "tx-1",
       "accountId": "acc-credit-1",
       "description": "ZAFFARI PORTO ALEG *0421",
       "amount": 284.9,
+      "amountInAccountCurrency": null,
+      "currencyCode": "BRL",
       "date": "2026-08-20T14:02:00.000Z",
       "type": "DEBIT",
       "category": "Supermarkets",
@@ -19,6 +19,8 @@
       "accountId": "acc-credit-1",
       "description": "IFOOD *PEDIDO",
       "amount": 61.5,
+      "amountInAccountCurrency": null,
+      "currencyCode": "BRL",
       "date": "2026-08-01T02:30:00.000Z",
       "type": "DEBIT",
       "category": "Food delivery"
@@ -28,6 +30,8 @@
       "accountId": "acc-credit-1",
       "description": "ESTORNO ZAFFARI",
       "amount": 30.0,
+      "amountInAccountCurrency": null,
+      "currencyCode": "BRL",
       "date": "2026-08-21T10:00:00.000Z",
       "type": "CREDIT",
       "category": "Supermarkets"
@@ -37,6 +41,8 @@
       "accountId": "acc-bank-1",
       "description": "TARIFA MANUTENCAO CONTA",
       "amount": 12.9,
+      "amountInAccountCurrency": null,
+      "currencyCode": "BRL",
       "date": "2026-08-10T12:00:00.000Z",
       "type": "DEBIT",
       "category": "Fees"
@@ -46,9 +52,22 @@
       "accountId": "acc-credit-1",
       "description": "ASSINATURA STREAMING",
       "amount": 45.0,
-      "date": "2026-08-01T00:00:00.000Z",
+      "amountInAccountCurrency": null,
+      "currencyCode": "BRL",
+      "date": "2026-08-01T03:00:00.000Z",
       "type": "DEBIT",
       "category": "Subscriptions"
+    },
+    {
+      "id": "tx-foreign",
+      "accountId": "acc-credit-1",
+      "description": "AWS EMEA",
+      "amount": 31.89,
+      "amountInAccountCurrency": 171.25,
+      "currencyCode": "USD",
+      "date": "2026-08-19T03:00:00.000Z",
+      "type": "DEBIT",
+      "category": "Software"
     }
   ]
 }

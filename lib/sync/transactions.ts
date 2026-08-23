@@ -1,17 +1,23 @@
 import { eq } from 'drizzle-orm'
 import type { Db } from '@/lib/db/client'
 import { accounts, connections, transactions } from '@/lib/db/schema'
-import { daysBefore } from '@/lib/domain/dates'
 import { mapTransaction } from '@/lib/pluggy/mapper'
 import type { PluggyClient } from '@/lib/pluggy/client'
 
-export const RECONCILE_WINDOW_DAYS = 90
+/**
+ * Pluggy's v2 transactions endpoint has no transaction-date filter, so a
+ * rolling window cannot be requested server-side any more. Every sync reads
+ * the account's full history and leans on the upsert, which is idempotent by
+ * construction. `createdAtFrom` exists but filters on when Pluggy created the
+ * record, so it would miss exactly what the reconcile is for: older
+ * transactions that later mutate.
+ */
 
 export async function syncConnection(
   db: Db,
   pluggy: PluggyClient,
   connectionId: string,
-  opts: { fromDate?: string; now?: Date } = {},
+  opts: { now?: Date } = {},
 ): Promise<{ upserted: number }> {
   const [connection] = await db
     .select()
@@ -21,7 +27,6 @@ export async function syncConnection(
   if (!connection) throw new Error('UNKNOWN_CONNECTION')
 
   const item = await pluggy.getItem(connection.pluggyItemId)
-  const from = opts.fromDate ?? daysBefore(RECONCILE_WINDOW_DAYS, opts.now ?? new Date())
   const localAccounts = await db
     .select()
     .from(accounts)
@@ -30,7 +35,7 @@ export async function syncConnection(
   let upserted = 0
 
   for (const account of localAccounts) {
-    const remote = await pluggy.listTransactions(account.pluggyAccountId, from)
+    const remote = await pluggy.listTransactions(account.pluggyAccountId)
 
     for (const tx of remote) {
       const row = mapTransaction(tx, account.id)

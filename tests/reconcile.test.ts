@@ -104,7 +104,7 @@ it('leaves existing data in place when a connection fails', async () => {
 
   const { http, HttpResponse } = await import('msw')
   server.use(
-    http.get('https://api.pluggy.test/transactions', () =>
+    http.get('https://api.pluggy.test/v2/transactions', () =>
       HttpResponse.json({ error: 'boom' }, { status: 500 }),
     ),
   )

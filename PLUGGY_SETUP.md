@@ -481,6 +481,17 @@ curl -s -H "X-API-KEY: $API_KEY" \
   | jq -r '.results[].date' | cut -dT -f2 | sort | uniq -c
 ```
 
+> **RESOLVED — 23 Aug 2026, against a live credit-card payload (500 transactions).**
+> The dominant time-of-day is `03:00:00.000Z` (133 of 500), which is exactly midnight in
+> São Paulo. Pluggy pads a date-only value to **local** midnight expressed in UTC, not to
+> UTC midnight, and otherwise carries a real time of day. Both cases want the same thing:
+> a straight IANA conversion, which is what `toSaoPauloDate` now does. The same payload
+> also showed 10 of 500 transactions in USD, with the BRL figure in
+> `amountInAccountCurrency` — see the money note below.
+>
+> Re-run the check below if you add a connector of a different type; it is cheap and the
+> answer is not guaranteed to be uniform.
+
 Interpretation:
 
 - Output is a **single line `00:00:00.000Z`** → midnight-padded. Bucket by `date.slice(0,10)`,

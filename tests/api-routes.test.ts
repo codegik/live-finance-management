@@ -153,7 +153,7 @@ it('still keeps the connection when the first sync fails, and says so', async ()
 
   const { http, HttpResponse } = await import('msw')
   server.use(
-    http.get('https://api.pluggy.test/transactions', () =>
+    http.get('https://api.pluggy.test/v2/transactions', () =>
       HttpResponse.json({ error: 'boom' }, { status: 500 }),
     ),
   )

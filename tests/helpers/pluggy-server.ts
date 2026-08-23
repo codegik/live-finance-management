@@ -19,12 +19,27 @@ export function createPluggyServer(overrides: RequestHandler[] = []) {
     http.post(`${BASE}/connect_token`, () => HttpResponse.json({ accessToken: 'connect-token-abc' })),
     http.get(`${BASE}/items/:itemId`, () => HttpResponse.json(item)),
     http.get(`${BASE}/accounts`, () => HttpResponse.json(accounts)),
-    http.get(`${BASE}/transactions`, ({ request }) => {
+    // The v1 /transactions endpoint answers 410 ENDPOINT_DEPRECATED in
+    // production. Mirroring that here means a regression back to it fails
+    // loudly in the suite instead of only against the real API.
+    http.get(`${BASE}/transactions`, () =>
+      HttpResponse.json(
+        {
+          message: 'This endpoint is deprecated. Use GET /v2/transactions with cursor pagination instead.',
+          code: 410,
+          codeDescription: 'ENDPOINT_DEPRECATED',
+        },
+        { status: 410 },
+      ),
+    ),
+    // v2: cursor pagination, `next` omitted on the last page. The fixture is
+    // small enough to be a single page.
+    http.get(`${BASE}/v2/transactions`, ({ request }) => {
       const accountId = new URL(request.url).searchParams.get('accountId')
       const results = accountId
         ? transactions.results.filter((tx) => tx.accountId === accountId)
         : transactions.results
-      return HttpResponse.json({ ...transactions, results })
+      return HttpResponse.json({ results, next: null })
     }),
   )
 }

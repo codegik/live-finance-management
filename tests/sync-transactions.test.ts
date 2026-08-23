@@ -79,10 +79,10 @@ it('keeps a bare date (no time component) on its own calendar date', async () =>
 
   const { http, HttpResponse } = await import('msw')
   server.use(
-    http.get('https://api.pluggy.test/transactions', () =>
+    http.get('https://api.pluggy.test/v2/transactions', () =>
       HttpResponse.json({
         page: 1,
-        totalPages: 1,
+        next: null,
         results: [
           {
             id: 'tx-bare-date',
@@ -106,15 +106,15 @@ it('keeps a bare date (no time component) on its own calendar date', async () =>
   expect(rows.find((r) => r.pluggyTransactionId === 'tx-bare-date')!.date).toBe('2026-08-01')
 })
 
-it('keeps a +00:00-spelled UTC-midnight transaction on its own calendar date', async () => {
+it('converts a UTC-midnight transaction as the instant it is', async () => {
   const { db, householdId, connectionId } = await seedConnection()
 
   const { http, HttpResponse } = await import('msw')
   server.use(
-    http.get('https://api.pluggy.test/transactions', () =>
+    http.get('https://api.pluggy.test/v2/transactions', () =>
       HttpResponse.json({
         page: 1,
-        totalPages: 1,
+        next: null,
         results: [
           {
             id: 'tx-offset-midnight',
@@ -133,8 +133,11 @@ it('keeps a +00:00-spelled UTC-midnight transaction on its own calendar date', a
   await syncConnection(db, pluggy(), connectionId)
   const rows = await listTransactions(db, householdId)
 
+  // 00:00Z is 21:00 the previous day in Sao Paulo. A live payload shows
+  // Pluggy pads calendar dates to LOCAL midnight (03:00Z), never 00:00Z, so
+  // a value spelled this way is a real instant and converting it is correct.
   expect(rows.find((r) => r.pluggyTransactionId === 'tx-offset-midnight')!.date).toBe(
-    '2026-08-01',
+    '2026-07-31',
   )
 })
 
@@ -143,10 +146,10 @@ it('rejects a transaction with a missing amount instead of storing R$ 0,00', asy
 
   const { http, HttpResponse } = await import('msw')
   server.use(
-    http.get('https://api.pluggy.test/transactions', () =>
+    http.get('https://api.pluggy.test/v2/transactions', () =>
       HttpResponse.json({
         page: 1,
-        totalPages: 1,
+        next: null,
         results: [
           {
             id: 'tx-no-amount',
@@ -193,10 +196,10 @@ it('updates an amount that changed between syncs rather than inserting a second 
 
   const { http, HttpResponse } = await import('msw')
   server.use(
-    http.get('https://api.pluggy.test/transactions', () =>
+    http.get('https://api.pluggy.test/v2/transactions', () =>
       HttpResponse.json({
         page: 1,
-        totalPages: 1,
+        next: null,
         results: [
           {
             id: 'tx-1',
@@ -230,7 +233,7 @@ it('attributes transactions to the correct account and reports the true upserted
 
   expect(purchase.accountName).toBe('Cartao Nubank')
   expect(bankFee.accountName).toBe('Conta Nubank')
-  expect(result.upserted).toBe(5)
+  expect(result.upserted).toBe(6)
 })
 
 it('records the sync time and status on the connection', async () => {
