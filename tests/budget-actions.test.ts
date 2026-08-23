@@ -1,8 +1,11 @@
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { beforeEach, expect, it, vi } from 'vitest'
 import { hashPassword } from '@/lib/auth/password'
 import { listBudgets } from '@/lib/db/budgets'
 import { listCategories } from '@/lib/db/categories'
 import { createHousehold } from '@/lib/db/households'
+import { type BudgetEditorRow, getBudgetEditorView } from '@/lib/views/budget-editor'
 import { resetDb, testDb, useTestEnv } from './helpers/db'
 
 const session = vi.hoisted(() => ({ current: { householdId: '', userId: '' } }))
@@ -15,6 +18,7 @@ vi.mock('@/lib/auth/session', () => ({
 vi.mock('next/cache', () => ({ revalidatePath: () => {} }))
 
 const { saveBudgetsAction } = await import('@/app/(app)/budgets/actions')
+const { BudgetForm } = await import('@/app/(app)/budgets/BudgetForm')
 const { INVALID_AMOUNT_ERROR, INVALID_PERIOD_ERROR, UNKNOWN_CATEGORY_ERROR } = await import(
   '@/app/(app)/budgets/state'
 )
@@ -197,6 +201,82 @@ it('writes nothing when every field is left untouched', async () => {
   expect(before).toEqual([
     { categoryId: categories[0].id, periodMonth: '2026-08-01', amountCents: 120_000 },
   ])
+})
+
+/**
+ * What a browser would actually submit from the editor with nothing typed:
+ * every amount field's rendered VALUE, and empty for a field that carries
+ * only a placeholder. Testing the action against a hand-written FormData
+ * cannot see this bug, because the bug is in which of the two the form uses.
+ */
+function untouchedSubmission(period: string, rows: BudgetEditorRow[]): Record<string, string> {
+  const markup = renderToStaticMarkup(createElement(BudgetForm, { period, rows }))
+  const submission: Record<string, string> = { period }
+
+  for (const [tag] of markup.matchAll(/<input[^>]*>/g)) {
+    const name = /name="(amount:[^"]+)"/.exec(tag)
+    if (!name) continue
+    const value = /value="([^"]*)"/.exec(tag)
+    submission[name[1]] = value ? value[1] : ''
+  }
+
+  return submission
+}
+
+it("keeps this month's other budgets when one category is edited and saved", async () => {
+  const { db, householdId, categories } = await seedHousehold()
+  // August's own explicit row: the household committed to it, deliberately.
+  await saveBudgetsAction(
+    EMPTY,
+    form({ period: '2026-08', [`amount:${categories[0].id}`]: '1200' }),
+  )
+
+  // It comes back to the SAME month, types an amount into a DIFFERENT
+  // category, and saves. Everything else is untouched, so it submits
+  // whatever the editor rendered -- which is the whole question: an amount
+  // this month already owns has to round-trip as a value, or the action
+  // reads the empty field as "clear" and deletes it with no warning.
+  const view = await getBudgetEditorView(db, householdId, '2026-08')
+  const submission = untouchedSubmission('2026-08', view.rows)
+  submission[`amount:${categories[1].id}`] = '500'
+
+  const result = await saveBudgetsAction(EMPTY, form(submission))
+
+  expect(result.error).toBeNull()
+  const stored = await listBudgets(db, householdId)
+  expect(stored).toContainEqual({
+    categoryId: categories[0].id,
+    periodMonth: '2026-08-01',
+    amountCents: 120_000,
+  })
+  expect(stored).toContainEqual({
+    categoryId: categories[1].id,
+    periodMonth: '2026-08-01',
+    amountCents: 50_000,
+  })
+  // And nothing else: the untouched categories, which carry only a
+  // suggestion or nothing at all, still write no row of their own.
+  expect(stored).toHaveLength(2)
+})
+
+it('does not materialize an inherited amount into a month of its own', async () => {
+  const { db, householdId, categories } = await seedHousehold()
+  await saveBudgetsAction(
+    EMPTY,
+    form({ period: '2026-08', [`amount:${categories[0].id}`]: '1200' }),
+  )
+  const before = await listBudgets(db, householdId)
+
+  // October inherits August's 1.200 -- it has no row of its own. Opening
+  // October and saving must leave it that way, or editing August stops
+  // reaching October forever.
+  const view = await getBudgetEditorView(db, householdId, '2026-10')
+  expect(view.rows.find((r) => r.categoryId === categories[0].id)?.inheritedFrom).toBe('2026-08')
+
+  const result = await saveBudgetsAction(EMPTY, form(untouchedSubmission('2026-10', view.rows)))
+
+  expect(result.error).toBeNull()
+  expect(await listBudgets(db, householdId)).toEqual(before)
 })
 
 it('rejects a malformed period as a form error rather than a 500', async () => {
