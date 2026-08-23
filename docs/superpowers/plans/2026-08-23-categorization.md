@@ -830,11 +830,13 @@ export function seedKeyForPluggyCategory(category: string | null | undefined): s
 
 - [ ] **Step 4: Write the resolution function**
 
-Append to `lib/domain/categorize.ts`:
+Add the import at the **top** of `lib/domain/categorize.ts`, beside the existing regex constants' file header, then append the rest:
 
 ```ts
 import { seedKeyForPluggyCategory } from './pluggy-categories'
+```
 
+```ts
 export type CategorySource = 'PLUGGY' | 'RULE' | 'MANUAL'
 
 export type RuleForResolution = {
@@ -1087,11 +1089,11 @@ it('never overwrites a hand-set category on a later sync', async () => {
 it('is idempotent: a second run over the same rows changes nothing', async () => {
   const { db, householdId } = await seedSynced()
 
-  const first = await recategorize(db, { householdId })
-  const second = await recategorize(db, { householdId })
-
-  expect(second.changed).toBe(0)
-  expect(first.changed).toBeGreaterThanOrEqual(0)
+  // The sync already categorized everything, so even the first run is a
+  // no-op. Both must be, or the nightly reconcile would rewrite every row
+  // every night.
+  expect((await recategorize(db, { householdId })).changed).toBe(0)
+  expect((await recategorize(db, { householdId })).changed).toBe(0)
 })
 
 it('recomputes a stale merchant on a household-wide run', async () => {
