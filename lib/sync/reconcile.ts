@@ -66,8 +66,13 @@ export async function reconcileAll(
       // row MANUAL -- which no sync or backfill ever revisits.
       await seedCategories(db, householdId)
       await seedDefaultRules(db, householdId)
-      // Before recategorize, so the inbox count it produces already excludes
-      // invoice payments and fees rather than counting them as work.
+      // The only pass that corrects is_transfer on a row the mapper did not
+      // touch -- one whose Pluggy category changed since the last sync, or
+      // one 0006 backfilled and the connector has since re-categorized.
+      //
+      // Order relative to recategorize is NOT load-bearing: the two passes
+      // key on independent columns (is_transfer vs category_id), and
+      // recategorize produces no inbox count for this one to influence.
       const { flagged } = await refreshTransferFlags(db, householdId)
       transfersFlagged += flagged
       const { changed } = await recategorize(db, { householdId })

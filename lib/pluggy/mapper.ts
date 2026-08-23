@@ -9,6 +9,7 @@ import type { PluggyTransaction } from './types'
 export function mapTransaction(remote: PluggyTransaction, accountId: string): NewTransaction {
   const merchantRaw = remote.merchant?.name ?? remote.merchant?.businessName ?? null
   const description = remote.descriptionRaw ?? remote.description
+  const installment = parseInstallment(description)
 
   return {
     accountId,
@@ -26,7 +27,7 @@ export function mapTransaction(remote: PluggyTransaction, accountId: string): Ne
     // collapses branch variants that the descriptor alone would split.
     merchantNormalized: normalizeMerchant(merchantRaw ?? description),
     isTransfer: isTransfer(remote.category ?? null),
-    installmentNumber: parseInstallment(description)?.number ?? null,
-    installmentTotal: parseInstallment(description)?.total ?? null,
+    installmentNumber: installment?.number ?? null,
+    installmentTotal: installment?.total ?? null,
   }
 }

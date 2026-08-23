@@ -205,7 +205,7 @@ it('reports 500 through the route when every connection fails', async () => {
   expect(body.failed).toHaveLength(1)
 })
 
-it('recategorizes every household after the nightly sync', async () => {
+it('recategorizes and re-flags transfers for every household after the nightly sync', async () => {
   const { db, householdId, connectionId } = await seed()
   // Every fixture transaction is touched -- and so already recategorized --
   // by its own connection's sync, so a genuinely stale row (the kind an
@@ -216,6 +216,15 @@ it('recategorizes every household after the nightly sync', async () => {
   const staleId = await insertTransaction(db, accountId, {
     description: 'ZAFFARI PORTO ALEG *0421',
     pluggyCategory: 'Supermarkets',
+  })
+  // An invoice payment on the same unreachable account, so nothing but
+  // refreshTransferFlags can put is_transfer right on it. This is the shape
+  // migration 0006 leaves behind on every pre-existing row: real Pluggy
+  // category, is_transfer still at its false default.
+  const invoiceId = await insertTransaction(db, accountId, {
+    description: 'PAGAMENTO FATURA',
+    amountCents: -177_174_79,
+    pluggyCategory: 'Credit card payment',
   })
   // A row written before any categorization existed: categoryId/source
   // null, exactly what an interrupted deploy or a normalizer change would
@@ -228,9 +237,15 @@ it('recategorizes every household after the nightly sync', async () => {
 
   expect(result.failed).toEqual([])
   expect(result.recategorized).toBeGreaterThan(0)
-  const rows = await listTransactions(db, householdId)
+  // Asserted the way `recategorized` is: without it, deleting the
+  // refreshTransferFlags call from reconcileAll leaves the suite green, and
+  // that call is the only thing that corrects is_transfer on rows the mapper
+  // never sees.
+  expect(result.transfersFlagged).toBe(1)
+  const rows = await listTransactions(db, householdId, { includeTransfers: true })
   expect(rows.find((r) => r.pluggyTransactionId === 'tx-1')!.categoryId).not.toBeNull()
   expect(rows.find((r) => r.id === staleId)!.categoryId).not.toBeNull()
+  expect(rows.find((r) => r.id === invoiceId)!.isTransfer).toBe(true)
 })
 
 // --- the household that predates the categorization migration ----------------

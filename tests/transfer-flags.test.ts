@@ -136,7 +136,10 @@ it('scopes to the household it was asked about', async () => {
   expect(rows[0].isTransfer).toBe(false)
 })
 
-it('records the instalment parts of a descriptor at ingest', async () => {
+// NOT a test of the mapper: insertTransaction parses the descriptor itself,
+// so this covers the columns and the read path only. mapTransaction's own
+// assignments are asserted in tests/pluggy-v2.test.ts.
+it('stores and reads back the instalment columns on a transaction row', async () => {
   const { db, householdId, accountId } = await seedHousehold()
   const id = await insertTransaction(db, accountId, { description: 'AUTO MECANICA BOA 03/10' })
 

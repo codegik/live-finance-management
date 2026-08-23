@@ -33,3 +33,19 @@ it('does not read a parcel out of the tail of a longer number', () => {
   // Without a digit guard this yields a phantom 10-part commitment.
   expect(parseInstallment('POSTO 44710/12')).toBeNull()
 })
+
+it('does not read a Brazilian date as an instalment', () => {
+  // A date is spelled exactly like a parcel suffix. Every one of these
+  // parsed as a commitment before the trailing guard rejected a following
+  // slash as well as a following digit; only DD > MM was ever caught, and
+  // then only by the 1..total sanity check.
+  expect(parseInstallment('PAGTO 01/12/2024')).toBeNull()
+  expect(parseInstallment('VENC 02/10/2026')).toBeNull()
+  expect(parseInstallment('PIX 05/09/2026')).toBeNull()
+})
+
+it('still reads a suffix glued to a trailing letter', () => {
+  // Deliberate looseness: real descriptors truncate mid-word, and the
+  // digit/slash guards are about neighbouring NUMBERS, not letters.
+  expect(parseInstallment('07/12X')).toEqual({ number: 7, total: 12 })
+})
