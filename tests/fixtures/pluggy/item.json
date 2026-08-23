@@ -1,0 +1,6 @@
+{
+  "id": "item-nubank-1",
+  "status": "UPDATED",
+  "connector": { "id": 212, "name": "Nubank" },
+  "lastUpdatedAt": "2026-08-22T09:00:00.000Z"
+}
