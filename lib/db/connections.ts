@@ -1,8 +1,8 @@
-import { and, eq } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { staleReason, type StaleReason } from '@/lib/domain/health'
 import type { Db } from './client'
 import { listHouseholdUsers } from './households'
-import { accounts, connections, type Account, type Connection } from './schema'
+import { accounts, connections, transactions, type Account, type Connection } from './schema'
 
 export async function listConnections(db: Db, householdId: string): Promise<Connection[]> {
   return db.select().from(connections).where(eq(connections.householdId, householdId))
@@ -97,4 +97,37 @@ export async function listConnectionDetails(
         dueDay: account.dueDay,
       })),
   }))
+}
+
+/** How much history removing this connection would destroy. */
+export async function countConnectionTransactions(
+  db: Db,
+  householdId: string,
+  connectionId: string,
+): Promise<number> {
+  const [row] = await db
+    .select({ count: sql<string>`count(*)` })
+    .from(transactions)
+    .innerJoin(accounts, eq(transactions.accountId, accounts.id))
+    .innerJoin(connections, eq(accounts.connectionId, connections.id))
+    .where(and(eq(connections.householdId, householdId), eq(connections.id, connectionId)))
+  return Number(row?.count ?? 0)
+}
+
+/**
+ * Removes a connection and, by FK cascade, its accounts and every
+ * transaction in them. Scoped to the household in the DELETE itself, so a
+ * connection id from elsewhere deletes nothing rather than deleting
+ * someone else's history.
+ */
+export async function deleteConnection(
+  db: Db,
+  householdId: string,
+  connectionId: string,
+): Promise<{ removed: boolean }> {
+  const rows = await db
+    .delete(connections)
+    .where(and(eq(connections.householdId, householdId), eq(connections.id, connectionId)))
+    .returning({ id: connections.id })
+  return { removed: rows.length > 0 }
 }

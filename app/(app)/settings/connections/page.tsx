@@ -1,8 +1,10 @@
+import Link from 'next/link'
 import { ConnectBankButton } from '@/components/ConnectBankButton'
 import { requireSession, toSignInOrThrow } from '@/lib/auth/session'
 import { getDb } from '@/lib/db/client'
-import { listConnectionDetails } from '@/lib/db/connections'
+import { countConnectionTransactions, listConnectionDetails } from '@/lib/db/connections'
 import { HOUSEHOLD_TIME_ZONE } from '@/lib/domain/dates'
+import { RemoveConnectionForm } from './ConnectionForms'
 
 export const dynamic = 'force-dynamic'
 
@@ -25,9 +27,18 @@ function syncedLabel(at: Date | null): string {
   return `synced ${formatted}`
 }
 
-export default async function ConnectionsSettingsPage() {
+export default async function ConnectionsSettingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ remove?: string }>
+}) {
   const session = await requireSession().catch(toSignInOrThrow)
-  const details = await listConnectionDetails(getDb(), session.householdId)
+  const { remove } = await searchParams
+  const db = getDb()
+  const details = await listConnectionDetails(db, session.householdId)
+  const removing = remove
+    ? { id: remove, count: await countConnectionTransactions(db, session.householdId, remove) }
+    : null
 
   return (
     <main className="page page--narrow">
@@ -66,6 +77,15 @@ export default async function ConnectionsSettingsPage() {
                 </ul>
               </div>
               <ConnectBankButton itemId={connection.pluggyItemId} label="Reconnect" />
+              {removing?.id === connection.id ? (
+                <RemoveConnectionForm
+                  connectionId={connection.id}
+                  institution={connection.institution}
+                  transactionCount={removing.count}
+                />
+              ) : (
+                <Link href={`/settings/connections?remove=${connection.id}`}>Remove</Link>
+              )}
             </li>
           ))}
         </ul>
