@@ -15,7 +15,9 @@ vi.mock('@/lib/auth/session', () => ({
 vi.mock('next/cache', () => ({ revalidatePath: () => {} }))
 
 const { saveBudgetsAction } = await import('@/app/(app)/budgets/actions')
-const { INVALID_AMOUNT_ERROR, UNKNOWN_CATEGORY_ERROR } = await import('@/app/(app)/budgets/state')
+const { INVALID_AMOUNT_ERROR, INVALID_PERIOD_ERROR, UNKNOWN_CATEGORY_ERROR } = await import(
+  '@/app/(app)/budgets/state'
+)
 
 const EMPTY = { error: null, message: null }
 
@@ -60,6 +62,9 @@ it('saves the amounts that were filled in, in reais, as centavos', async () => {
 // pair that exercises the thousands-separator rule that tells them apart.
 it.each([
   ['1.200,50', 120_050],
+  // The R$ prefix is stripped: a household that types the currency in gets
+  // the amount it typed, not a rejection.
+  ['R$ 1.200,50', 120_050],
   ['1200.50', 120_050],
   ['1200', 120_000],
   ['1.200', 120_000],
@@ -160,4 +165,60 @@ it('rolls back the whole submission when one category id belongs to another hous
   // the transaction, not just the parse, is all-or-nothing.
   expect(await listBudgets(db, householdId)).toEqual([])
   expect(await listBudgets(db, other.householdId)).toEqual([])
+})
+
+it('writes nothing when every field is left untouched', async () => {
+  const { db, householdId, categories } = await seedHousehold()
+  // A budget in force for August by carry-forward, with no row of its own
+  // for October: exactly what the editor pre-fills a field with.
+  await saveBudgetsAction(
+    EMPTY,
+    form({ period: '2026-08', [`amount:${categories[0].id}`]: '1200' }),
+  )
+  const before = await listBudgets(db, householdId)
+
+  // Opening October and pressing Save without typing anything. The form
+  // shows inherited and suggested amounts as PLACEHOLDERS, so an untouched
+  // field submits empty -- if it submitted its pre-filled value instead,
+  // this one click would materialize an explicit October row for every
+  // category, and editing August would stop reaching October forever.
+  const result = await saveBudgetsAction(
+    EMPTY,
+    form(
+      Object.fromEntries([
+        ['period', '2026-10'],
+        ...categories.map((c) => [`amount:${c.id}`, '']),
+      ]) as Record<string, string>,
+    ),
+  )
+
+  expect(result.error).toBeNull()
+  expect(await listBudgets(db, householdId)).toEqual(before)
+  expect(before).toEqual([
+    { categoryId: categories[0].id, periodMonth: '2026-08-01', amountCents: 120_000 },
+  ])
+})
+
+it('rejects a malformed period as a form error rather than a 500', async () => {
+  const { db, householdId, categories } = await seedHousehold()
+
+  const result = await saveBudgetsAction(
+    EMPTY,
+    form({ period: 'august', [`amount:${categories[0].id}`]: '100' }),
+  )
+
+  expect(result.error).toBe(INVALID_PERIOD_ERROR)
+  expect(await listBudgets(db, householdId)).toEqual([])
+})
+
+it('rejects a category id that could not be a uuid rather than letting Postgres cast it', async () => {
+  const { db, householdId } = await seedHousehold()
+
+  const result = await saveBudgetsAction(
+    EMPTY,
+    form({ period: '2026-08', 'amount:not-a-uuid': '100' }),
+  )
+
+  expect(result.error).toBe(UNKNOWN_CATEGORY_ERROR)
+  expect(await listBudgets(db, householdId)).toEqual([])
 })

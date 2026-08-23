@@ -37,6 +37,7 @@ function read(relativePath: string): string {
 const PAGES = [
   'app/(app)/settings/categories/page.tsx',
   'app/(app)/settings/rules/page.tsx',
+  'app/(app)/budgets/page.tsx',
 ]
 
 const CLIENT_FORMS: { path: string; actions: string[] }[] = [
@@ -47,6 +48,10 @@ const CLIENT_FORMS: { path: string; actions: string[] }[] = [
   {
     path: 'app/(app)/settings/rules/RuleForms.tsx',
     actions: ['createRuleAction', 'deleteRuleAction'],
+  },
+  {
+    path: 'app/(app)/budgets/BudgetForm.tsx',
+    actions: ['saveBudgetsAction'],
   },
 ]
 
@@ -104,15 +109,31 @@ it('keeps the (prevState, formData) signature the client forms depend on', async
 
   const categories = await import('@/app/(app)/settings/categories/actions')
   const rules = await import('@/app/(app)/settings/rules/actions')
+  const budgets = await import('@/app/(app)/budgets/actions')
   const everyAction = [
     categories.createCategoryAction,
     categories.renameCategoryAction,
     categories.archiveCategoryAction,
     rules.createRuleAction,
     rules.deleteRuleAction,
+    budgets.saveBudgetsAction,
   ]
 
   // Two declared parameters is what makes a bare <form action> wrong: React
   // would supply only the first.
   for (const action of everyAction) expect(action).toHaveLength(2)
+})
+
+it('pre-fills the budget fields with a placeholder, never a value', () => {
+  // A pre-filled VALUE submits. With one on every field, a single click on
+  // "Save budgets" writes an explicit row for the period being edited for
+  // every category carrying an inherited budget or any spend history --
+  // which contradicts "saving writes only the categories actually set" and
+  // permanently breaks carry-forward into that month. The behavioural half
+  // of this lives in tests/budget-actions.test.ts; only the source can say
+  // which attribute the form actually uses.
+  const source = read('app/(app)/budgets/BudgetForm.tsx')
+
+  expect(source).toMatch(/placeholder\s*=/)
+  expect(source).not.toMatch(/defaultValue\s*=/)
 })

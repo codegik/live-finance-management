@@ -6,10 +6,16 @@ import { clearBudget, setBudget } from '@/lib/db/budgets'
 import { getDb } from '@/lib/db/client'
 import {
   INVALID_AMOUNT_ERROR,
+  INVALID_PERIOD_ERROR,
   SAVED_MESSAGE,
   UNKNOWN_CATEGORY_ERROR,
   type BudgetState,
 } from './state'
+
+const PERIOD = /^\d{4}-\d{2}$/
+// Postgres rejects a non-UUID string cast to uuid with an error that matches
+// neither catch arm below, so it has to be caught before it reaches the query.
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /**
  * A Brazilian household writes '1.200,50'; a keyboard often produces
@@ -48,16 +54,24 @@ export async function saveBudgetsAction(
   const session = await requireSession()
   const period = String(formData.get('period') ?? '')
 
+  // Validate the shape of both keys up front. Without this a malformed
+  // period reaches monthBounds, which throws INVALID_PERIOD:… -- a message
+  // matching neither catch arm below, so it escapes as a 500 instead of a
+  // form error the household can read and act on.
+  if (!PERIOD.test(period)) return { error: INVALID_PERIOD_ERROR, message: null }
+
   // Parse everything before writing anything: a half-saved budget screen is
   // worse than a rejected one, because the household cannot see which half.
   const parsed: { categoryId: string; amountCents: number | null }[] = []
   try {
     for (const [key, value] of formData.entries()) {
       if (!key.startsWith('amount:')) continue
-      parsed.push({
-        categoryId: key.slice('amount:'.length),
-        amountCents: parseReais(String(value)),
-      })
+      const categoryId = key.slice('amount:'.length)
+      // Not an authorization check -- setBudget still proves the category
+      // belongs to this household. This only keeps a value that could never
+      // be a uuid from reaching Postgres as a cast error.
+      if (!UUID.test(categoryId)) return { error: UNKNOWN_CATEGORY_ERROR, message: null }
+      parsed.push({ categoryId, amountCents: parseReais(String(value)) })
     }
   } catch {
     return { error: INVALID_AMOUNT_ERROR, message: null }

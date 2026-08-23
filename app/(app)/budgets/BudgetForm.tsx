@@ -22,11 +22,19 @@ export function BudgetForm({ period, rows }: { period: string; rows: BudgetEdito
           <li key={row.categoryId} className="settings__row">
             <label>
               {row.categoryName}
+              {/* placeholder, NEVER defaultValue. A pre-filled field
+                  submits, so one click on Save would write an explicit row
+                  for this period for every category with an inherited budget
+                  or any spend history -- contradicting "saving writes only
+                  the categories actually set", and killing carry-forward,
+                  because a month with its own row no longer inherits. Shown
+                  as a placeholder, an untouched field submits empty and
+                  writes nothing. */}
               <input
                 name={`amount:${row.categoryId}`}
                 type="text"
                 inputMode="decimal"
-                defaultValue={
+                placeholder={
                   row.amountCents !== null
                     ? reais(row.amountCents)
                     : row.suggestionCents !== null
