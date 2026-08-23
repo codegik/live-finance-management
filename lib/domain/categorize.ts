@@ -16,6 +16,8 @@
  * reconcile recomputes merchant_normalized household-wide.
  */
 
+import { seedKeyForPluggyCategory } from './pluggy-categories'
+
 const COMBINING_MARKS = /[̀-ͯ]/g
 /** '*0421', '*PEDIDO' — an order or terminal id, and everything after it. */
 const ASTERISK_TAIL = /\*.*$/
@@ -41,4 +43,66 @@ export function normalizeMerchant(raw: string | null | undefined): string | null
     .trim()
 
   return normalized === '' ? null : normalized
+}
+
+export type CategorySource = 'PLUGGY' | 'RULE' | 'MANUAL'
+
+export type RuleForResolution = {
+  id: string
+  matchType: 'EXACT' | 'CONTAINS'
+  pattern: string
+  categoryId: string
+  priority: number
+}
+
+export type TransactionForResolution = {
+  merchantNormalized: string | null
+  pluggyCategory: string | null
+  categoryId: string | null
+  categorySource: CategorySource | null
+}
+
+export type Resolution = { categoryId: string | null; source: CategorySource | null }
+
+/**
+ * The single decision in this slice, in strict precedence order.
+ *
+ * `categoryIdBySeedKey` must contain only non-archived categories: an
+ * archived category is then simply absent, and its Pluggy hits fall through
+ * to the inbox without a special case here.
+ *
+ * Rules are sorted per call. At household scale (tens of rules) that cost is
+ * irrelevant, and it makes the function safe to hand an unsorted array —
+ * a footgun worth more than the microseconds.
+ */
+export function resolveCategory(
+  tx: TransactionForResolution,
+  rules: RuleForResolution[],
+  categoryIdBySeedKey: Map<string, string>,
+): Resolution {
+  // 1. A hand-set category is never reconsidered.
+  if (tx.categorySource === 'MANUAL') {
+    return { categoryId: tx.categoryId, source: 'MANUAL' }
+  }
+
+  // 2. Merchant rules, lowest priority number first, ties broken on id so
+  //    the outcome never depends on row order.
+  const merchant = tx.merchantNormalized
+  if (merchant) {
+    const ordered = [...rules].sort(
+      (a, b) => a.priority - b.priority || a.id.localeCompare(b.id),
+    )
+    const hit = ordered.find((rule) =>
+      rule.matchType === 'EXACT' ? merchant === rule.pattern : merchant.includes(rule.pattern),
+    )
+    if (hit) return { categoryId: hit.categoryId, source: 'RULE' }
+  }
+
+  // 3. Pluggy's own category, through the seed-key map.
+  const seedKey = seedKeyForPluggyCategory(tx.pluggyCategory)
+  const mapped = seedKey ? categoryIdBySeedKey.get(seedKey) : undefined
+  if (mapped) return { categoryId: mapped, source: 'PLUGGY' }
+
+  // 4. The inbox.
+  return { categoryId: null, source: null }
 }
