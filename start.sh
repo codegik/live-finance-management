@@ -178,16 +178,29 @@ command -v docker >/dev/null 2>&1 || die "docker is not installed. See https://d
 docker info >/dev/null 2>&1 || die "The Docker daemon is not running. Start it and re-run (e.g. 'sudo systemctl start docker')."
 command -v pnpm >/dev/null 2>&1 || die "pnpm is not installed. See https://pnpm.io/installation"
 
+seed_household() {
+  # Registration is invite-only and nothing creates the first account, so
+  # without this there is no way to sign in. ./seed.sh is idempotent: an
+  # existing account is left untouched, so this is safe on every boot.
+  if [ "${SEED_SKIP:-false}" = true ]; then
+    ok "Skipping seed (SEED_SKIP=true)"
+    return
+  fi
+  info "Seeding the first household"
+  # A seeding failure should not take the whole stack down — the app and
+  # database are already up and usable at this point.
+  "$ROOT/seed.sh" || warn "Seeding failed. Run ./seed.sh on its own to see why."
+}
+
 ensure_env_file
 [ -d "$ROOT/node_modules" ] || { info "Installing dependencies"; (cd "$ROOT" && pnpm install --frozen-lockfile); }
 start_db
 run_migrations
 start_app
+printf '\n'
+seed_household
 
 printf '\n'
 ok "Up. http://localhost:$APP_PORT"
 printf '     logs:  tail -f %s\n' "$LOG_FILE"
 printf '     stop:  ./stop.sh\n'
-printf '\n'
-warn "No sign-up page exists yet — registration is invite-only and nothing seeds"
-warn "the first household, so you cannot log in until one is created."
