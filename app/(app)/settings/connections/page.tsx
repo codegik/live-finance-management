@@ -2,12 +2,27 @@ import { ConnectBankButton } from '@/components/ConnectBankButton'
 import { requireSession, toSignInOrThrow } from '@/lib/auth/session'
 import { getDb } from '@/lib/db/client'
 import { listConnectionDetails } from '@/lib/db/connections'
+import { HOUSEHOLD_TIME_ZONE } from '@/lib/domain/dates'
 
 export const dynamic = 'force-dynamic'
 
+// Formatted in the household's zone, not UTC -- this line exists to tell the
+// user how current their data is, and a UTC clock would be quietly wrong by
+// three hours for the one household this app serves.
 function syncedLabel(at: Date | null): string {
   if (!at) return 'never synced'
-  return `synced ${at.toISOString().slice(0, 16).replace('T', ' ')}`
+  const formatted = new Intl.DateTimeFormat('en-CA', {
+    timeZone: HOUSEHOLD_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  })
+    .format(at)
+    .replace(', ', ' ')
+  return `synced ${formatted}`
 }
 
 export default async function ConnectionsSettingsPage() {
@@ -30,7 +45,7 @@ export default async function ConnectionsSettingsPage() {
               <div>
                 <strong>{connection.institution}</strong> · {connection.ownerName}
                 <p className="settings__meta">
-                  {connection.status.toLowerCase().replace('_', ' ')} ·{' '}
+                  {connection.status.toLowerCase().replaceAll('_', ' ')} ·{' '}
                   {syncedLabel(connection.lastSyncedAt)}
                 </p>
                 {connection.stale ? (
