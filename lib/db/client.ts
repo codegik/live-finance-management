@@ -4,6 +4,16 @@ import * as schema from './schema'
 
 export type Db = ReturnType<typeof createDb>['db']
 
+/**
+ * A database handle that may or may not be inside a transaction.
+ *
+ * Rule creation writes the rule and backfills its transactions in one
+ * database transaction, so the query helpers it calls must accept the
+ * transaction handle rather than the pool. Deriving the type from
+ * Db['transaction'] keeps it correct if the driver changes.
+ */
+export type Executor = Db | Parameters<Parameters<Db['transaction']>[0]>[0]
+
 export function createDb(url: string) {
   const sql = postgres(url, { max: 5 })
   return { db: drizzle(sql, { schema }), sql }

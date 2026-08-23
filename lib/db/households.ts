@@ -1,5 +1,6 @@
 import { count, eq, sql } from 'drizzle-orm'
 import { hashPassword } from '../auth/password'
+import { seedCategories } from './categories'
 import type { Db } from './client'
 import { households, users, type User } from './schema'
 
@@ -20,6 +21,8 @@ export async function createHousehold(
       .insert(households)
       .values({ name: input.name })
       .returning({ id: households.id })
+
+    await seedCategories(tx, household.id)
 
     const [user] = await tx
       .insert(users)
@@ -81,6 +84,8 @@ export async function createFirstHousehold(
       .insert(households)
       .values({ name: input.householdName })
       .returning({ id: households.id })
+
+    await seedCategories(tx, household.id)
 
     const [user] = await tx
       .insert(users)
