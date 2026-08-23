@@ -20,7 +20,9 @@ vi.mock('@/lib/auth/session', () => ({
 vi.mock('next/cache', () => ({ revalidatePath: () => {} }))
 
 const { assignGroupAction } = await import('@/app/(app)/inbox/actions')
-const { ASSIGNED_MESSAGE, MISSING_FIELD_ERROR } = await import('@/app/(app)/inbox/state')
+const { ASSIGNED_MESSAGE, EMPTY_PATTERN_ERROR, MISSING_FIELD_ERROR } = await import(
+  '@/app/(app)/inbox/state'
+)
 
 beforeEach(async () => {
   useTestEnv()
@@ -124,6 +126,28 @@ it('refuses an assignment with no category chosen', async () => {
   )
 
   expect(result.error).toBe(MISSING_FIELD_ERROR)
+  const rows = await listTransactions(db, householdId)
+  expect(rows[0].categoryId).toBeNull()
+})
+
+it('reports an empty pattern rather than throwing, and leaves the group untouched', async () => {
+  const { db, householdId, accountId } = await seedHousehold()
+  await insertTransaction(db, accountId, { description: 'ZAFFARI' })
+  const [supermarket] = await listCategories(db, householdId)
+
+  const result = await assignGroupAction(
+    { error: null, message: null },
+    form({
+      merchant: 'ZAFFARI',
+      categoryId: supermarket.id,
+      createRule: 'on',
+      pattern: '***',
+      matchType: 'EXACT',
+    }),
+  )
+
+  expect(result.error).toBe(EMPTY_PATTERN_ERROR)
+  expect(await listRules(db, householdId)).toEqual([])
   const rows = await listTransactions(db, householdId)
   expect(rows[0].categoryId).toBeNull()
 })

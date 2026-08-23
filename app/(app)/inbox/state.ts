@@ -6,4 +6,4 @@ export type AssignState = { error: string | null; message: string | null }
 
 export const ASSIGNED_MESSAGE = 'Categorized'
 export const MISSING_FIELD_ERROR = 'Choose a category first.'
-export const UNKNOWN_MERCHANT_ERROR = 'That merchant is no longer in the inbox.'
+export const EMPTY_PATTERN_ERROR = 'That pattern has no letters or numbers to match on.'
