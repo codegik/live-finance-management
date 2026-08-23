@@ -3,7 +3,9 @@ import { hashPassword } from '@/lib/auth/password'
 import { setBudget } from '@/lib/db/budgets'
 import { listCategories } from '@/lib/db/categories'
 import { createHousehold } from '@/lib/db/households'
+import { createRule } from '@/lib/db/rules'
 import { connections } from '@/lib/db/schema'
+import { listTransactions } from '@/lib/db/transactions'
 import { recategorize } from '@/lib/sync/categorize'
 import { refreshTransferFlags } from '@/lib/sync/transfers'
 import { getForwardView } from '@/lib/views/forward'
@@ -95,13 +97,41 @@ it('counts only instalments, not an ordinary future-dated purchase', async () =>
 
 it('excludes transfers from the committed total', async () => {
   const { db, householdId, accountId } = await seedHousehold()
+  const supermarket = await categoryNamed(householdId, 'Supermercado')
   await insertTransaction(db, accountId, {
     description: 'PAGAMENTO PARC 02/03',
     amountCents: -100_000,
     date: '2026-09-20',
     pluggyCategory: 'Credit card payment',
   })
+  // 'Credit card payment' is one of the four Pluggy categories deliberately
+  // absent from PLUGGY_CATEGORY_TO_SEED_KEY (lib/domain/pluggy-categories.ts)
+  // -- it is a transfer, not spend, so it maps to no budget category.
+  // Without a rule this row would keep a null category_id even after
+  // recategorize, and the view drops null-category rows before the
+  // is_transfer predicate ever runs -- which would make this test pass for
+  // the wrong reason. The rule gives the row a real category, the way a
+  // household hand-writing one would, so is_transfer is the only thing left
+  // that can exclude it from the total below. Do not remove this rule as a
+  // "simplification" -- it is what keeps the test honest.
+  await createRule(db, householdId, {
+    matchType: 'CONTAINS',
+    pattern: 'PAGAMENTO',
+    categoryId: supermarket,
+  })
   await recategorize(db, { householdId })
+
+  // Prove the test's own premise instead of assuming it: the row must
+  // actually be categorized before is_transfer can be the thing under test.
+  const categorized = await listTransactions(db, householdId, {
+    from: '2026-09-01',
+    to: '2026-09-30',
+    includeTransfers: true,
+  })
+  expect(categorized.find((t) => t.description === 'PAGAMENTO PARC 02/03')!.categoryId).not.toBe(
+    null,
+  )
+
   // The helper leaves is_transfer at its default, exactly as the migration
   // leaves pre-existing rows, so the flag pass has to run first.
   await refreshTransferFlags(db, householdId)
