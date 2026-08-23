@@ -109,6 +109,51 @@ it('uses amount when the transaction is already in the account currency', () => 
   expect(mapped.amountCents).toBe(28490)
 })
 
+// --- the columns the budget slice reads --------------------------------------
+
+it('flags an invoice payment as a transfer at map time', () => {
+  // Asserted on mapTransaction's OUTPUT, not through insertTransaction: the
+  // test helper computes these fields itself, so a path that goes through it
+  // stays green even with the mapper's assignments deleted.
+  const mapped = mapTransaction(
+    {
+      id: 'tx-invoice',
+      accountId: 'acc-credit-1',
+      description: 'PAGAMENTO FATURA',
+      amount: -1771.75,
+      amountInAccountCurrency: null,
+      currencyCode: 'BRL',
+      date: '2026-08-20T03:00:00.000Z',
+      type: 'CREDIT',
+      category: 'Credit card payment',
+    },
+    'internal-account-id',
+  )
+
+  expect(mapped.isTransfer).toBe(true)
+})
+
+it('records the instalment parts of the descriptor at map time', () => {
+  const mapped = mapTransaction(
+    {
+      id: 'tx-parcela',
+      accountId: 'acc-credit-1',
+      description: 'ZAFFARI',
+      descriptionRaw: 'ZAFFARI PARC 03/12',
+      amount: 284.9,
+      amountInAccountCurrency: null,
+      currencyCode: 'BRL',
+      date: '2026-08-20T03:00:00.000Z',
+      type: 'DEBIT',
+      category: 'Supermarkets',
+    },
+    'internal-account-id',
+  )
+
+  expect(mapped.isTransfer).toBe(false)
+  expect(mapped).toMatchObject({ installmentNumber: 3, installmentTotal: 12 })
+})
+
 // --- dates, against the shape real data actually uses -------------------------
 
 it('buckets a Sao Paulo midnight-padded date to that calendar day', () => {

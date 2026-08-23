@@ -31,7 +31,13 @@ function householdUncategorized(exec: Executor, householdId: string) {
     .from(transactions)
     .innerJoin(accounts, eq(transactions.accountId, accounts.id))
     .innerJoin(connections, eq(accounts.connectionId, connections.id))
-    .where(and(eq(connections.householdId, householdId), isNull(transactions.categoryId)))
+    .where(
+      and(
+        eq(connections.householdId, householdId),
+        isNull(transactions.categoryId),
+        eq(transactions.isTransfer, false),
+      ),
+    )
     .groupBy(transactions.merchantNormalized)
     .orderBy(sql`sum(${transactions.amountCents}) desc`)
 }
@@ -64,7 +70,13 @@ export async function countUncategorized(exec: Executor, householdId: string): P
     .from(transactions)
     .innerJoin(accounts, eq(transactions.accountId, accounts.id))
     .innerJoin(connections, eq(accounts.connectionId, connections.id))
-    .where(and(eq(connections.householdId, householdId), isNull(transactions.categoryId)))
+    .where(
+      and(
+        eq(connections.householdId, householdId),
+        isNull(transactions.categoryId),
+        eq(transactions.isTransfer, false),
+      ),
+    )
 
   return Number(row?.value ?? 0)
 }

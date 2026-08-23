@@ -36,3 +36,13 @@ export function toSaoPauloDate(iso: string): string {
 export function daysBefore(days: number, reference: Date): string {
   return format(subDays(new TZDate(reference, HOUSEHOLD_TIME_ZONE), days), 'yyyy-MM-dd')
 }
+
+/** The household's calendar date for an instant. */
+export function saoPauloToday(now: Date): string {
+  return format(new TZDate(now, HOUSEHOLD_TIME_ZONE), 'yyyy-MM-dd')
+}
+
+/** The household's budget period (`YYYY-MM`) for an instant. */
+export function saoPauloPeriod(now: Date): string {
+  return format(new TZDate(now, HOUSEHOLD_TIME_ZONE), 'yyyy-MM')
+}

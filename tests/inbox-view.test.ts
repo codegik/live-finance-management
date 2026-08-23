@@ -4,6 +4,7 @@ import { listCategories } from '@/lib/db/categories'
 import { createHousehold } from '@/lib/db/households'
 import { createRule } from '@/lib/db/rules'
 import { connections } from '@/lib/db/schema'
+import { refreshTransferFlags } from '@/lib/sync/transfers'
 import { countUncategorized, getInboxView } from '@/lib/views/inbox'
 import { resetDb, testDb, useTestEnv } from './helpers/db'
 import { insertTransaction, seedAccount } from './helpers/transactions'
@@ -93,5 +94,22 @@ it("never shows another household's transactions", async () => {
   })
 
   expect((await getInboxView(db, otherId)).groups).toEqual([])
+  expect(await countUncategorized(db, householdId)).toBe(1)
+})
+
+it('keeps invoice payments out of the inbox, since they are not work', async () => {
+  const { db, householdId, accountId } = await seedHousehold()
+  await insertTransaction(db, accountId, {
+    description: 'PAGAMENTO FATURA',
+    amountCents: -100_000,
+    pluggyCategory: 'Credit card payment',
+  })
+  await insertTransaction(db, accountId, { description: 'ZAFFARI' })
+  await refreshTransferFlags(db, householdId)
+
+  const view = await getInboxView(db, householdId)
+
+  expect(view.totalCount).toBe(1)
+  expect(view.groups.map((g) => g.merchant)).toEqual(['ZAFFARI'])
   expect(await countUncategorized(db, householdId)).toBe(1)
 })

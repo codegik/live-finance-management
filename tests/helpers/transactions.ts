@@ -1,5 +1,6 @@
 import { accounts, transactions } from '@/lib/db/schema'
 import { normalizeMerchant } from '@/lib/domain/categorize'
+import { parseInstallment } from '@/lib/domain/installments'
 import type { Db } from '@/lib/db/client'
 
 /**
@@ -49,6 +50,8 @@ export async function insertTransaction(
       merchantRaw,
       pluggyCategory: over.pluggyCategory ?? null,
       merchantNormalized: normalizeMerchant(merchantRaw ?? over.description),
+      installmentNumber: parseInstallment(over.description)?.number ?? null,
+      installmentTotal: parseInstallment(over.description)?.total ?? null,
     })
     .returning({ id: transactions.id })
   return row.id

@@ -37,6 +37,7 @@ function read(relativePath: string): string {
 const PAGES = [
   'app/(app)/settings/categories/page.tsx',
   'app/(app)/settings/rules/page.tsx',
+  'app/(app)/budgets/page.tsx',
 ]
 
 const CLIENT_FORMS: { path: string; actions: string[] }[] = [
@@ -47,6 +48,10 @@ const CLIENT_FORMS: { path: string; actions: string[] }[] = [
   {
     path: 'app/(app)/settings/rules/RuleForms.tsx',
     actions: ['createRuleAction', 'deleteRuleAction'],
+  },
+  {
+    path: 'app/(app)/budgets/BudgetForm.tsx',
+    actions: ['saveBudgetsAction'],
   },
 ]
 
@@ -104,15 +109,47 @@ it('keeps the (prevState, formData) signature the client forms depend on', async
 
   const categories = await import('@/app/(app)/settings/categories/actions')
   const rules = await import('@/app/(app)/settings/rules/actions')
+  const budgets = await import('@/app/(app)/budgets/actions')
   const everyAction = [
     categories.createCategoryAction,
     categories.renameCategoryAction,
     categories.archiveCategoryAction,
     rules.createRuleAction,
     rules.deleteRuleAction,
+    budgets.saveBudgetsAction,
   ]
 
   // Two declared parameters is what makes a bare <form action> wrong: React
   // would supply only the first.
   for (const action of everyAction) expect(action).toHaveLength(2)
+})
+
+it("pre-fills an inherited or suggested amount as a placeholder, and this month's own as a value", () => {
+  // A pre-filled VALUE submits, and that cuts both ways.
+  //
+  // On every field it is wrong: one click on "Save budgets" would write an
+  // explicit row for the period being edited for every category carrying an
+  // inherited budget or any spend history, contradicting "saving writes only
+  // the categories actually set" and permanently breaking carry-forward into
+  // that month.
+  //
+  // On NO field it is equally wrong: a category whose budget is this
+  // period's OWN row would render empty, and the action reads empty as
+  // "clear" -- so editing one category silently deletes every other budget
+  // the household set for the month.
+  //
+  // So both attributes must be present, and the value must be reached only
+  // through the own-explicit-row guard. The behavioural halves live in
+  // tests/budget-actions.test.ts; only the source can say which attribute
+  // the form actually uses for which row.
+  const source = read('app/(app)/budgets/BudgetForm.tsx')
+
+  expect(source).toMatch(/placeholder:/)
+  expect(source).toMatch(/defaultValue:/)
+  expect(source).toMatch(/row\.inheritedFrom === null && row\.amountCents !== null/)
+  // Neither attribute may be written straight onto the input as a JSX
+  // attribute: that is a blanket pre-fill in one direction or the other,
+  // applied to every row regardless of where its amount came from.
+  expect(source).not.toMatch(/defaultValue\s*=\s*\{/)
+  expect(source).not.toMatch(/\bvalue\s*=\s*\{[^}]*amountCents/)
 })

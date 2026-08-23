@@ -1,5 +1,6 @@
 import {
   bigint,
+  boolean,
   date,
   index,
   integer,
@@ -154,6 +155,31 @@ export const merchantRules = pgTable(
 export type Category = typeof categories.$inferSelect
 export type MerchantRule = typeof merchantRules.$inferSelect
 
+export const budgets = pgTable(
+  'budget',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    householdId: uuid('household_id')
+      .notNull()
+      .references(() => households.id, { onDelete: 'cascade' }),
+    categoryId: uuid('category_id')
+      .notNull()
+      .references(() => categories.id, { onDelete: 'cascade' }),
+    // Always the first of the month. A date rather than 'YYYY-MM' text so it
+    // sorts and ranges without string parsing.
+    periodMonth: date('period_month').notNull(),
+    amountCents: bigint('amount_cents', { mode: 'number' }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('budget_period_unique').on(t.householdId, t.categoryId, t.periodMonth),
+    index('budget_household_idx').on(t.householdId, t.periodMonth),
+  ],
+)
+
+export type Budget = typeof budgets.$inferSelect
+
 export const transactions = pgTable(
   'transaction',
   {
@@ -170,6 +196,14 @@ export const transactions = pgTable(
     merchantNormalized: text('merchant_normalized'),
     categoryId: uuid('category_id').references(() => categories.id),
     categorySource: categorySourceEnum('category_source'),
+    // Money that moves without being spent: invoice payments, transfers and
+    // fees. Excluded from every total; see lib/domain/transfers.ts.
+    isTransfer: boolean('is_transfer').notNull().default(false),
+    // Parsed from the descriptor at ingest. Both set or both null. A row with
+    // these is money already committed, which is what pace and the forward
+    // view are built on.
+    installmentNumber: integer('installment_number'),
+    installmentTotal: integer('installment_total'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -179,6 +213,9 @@ export const transactions = pgTable(
     // Slice 3 aggregates spend with GROUP BY category_id; this is that index.
     index('transaction_category_idx').on(t.categoryId),
     index('transaction_merchant_idx').on(t.merchantNormalized),
+    // Month-range scans are the dashboard's access pattern, and the Slice 1
+    // indexes are keyed on account first, so they do not serve it.
+    index('transaction_date_idx').on(t.date),
   ],
 )
 
