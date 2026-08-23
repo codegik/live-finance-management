@@ -3,7 +3,12 @@ import { listBudgets } from '@/lib/db/budgets'
 import { listCategories } from '@/lib/db/categories'
 import type { Db } from '@/lib/db/client'
 import { accounts, connections, transactions } from '@/lib/db/schema'
-import { medianMonthlySpend, monthBounds } from '@/lib/domain/budget'
+import {
+  groupBudgetsByCategory,
+  medianMonthlySpend,
+  monthBounds,
+  resolveBudget,
+} from '@/lib/domain/budget'
 import { saoPauloPeriod } from '@/lib/domain/dates'
 
 export type BudgetEditorRow = {
@@ -64,12 +69,7 @@ export async function getBudgetEditorView(
     totalsByCategory.set(row.categoryId, months)
   }
 
-  const budgetsByCategory = new Map<string, { periodMonth: string; amountCents: number }[]>()
-  for (const row of budgetRows) {
-    const list = budgetsByCategory.get(row.categoryId) ?? []
-    list.push({ periodMonth: row.periodMonth, amountCents: row.amountCents })
-    budgetsByCategory.set(row.categoryId, list)
-  }
+  const budgetsByCategory = groupBudgetsByCategory(budgetRows)
 
   const { start } = monthBounds(period)
 
@@ -77,12 +77,10 @@ export async function getBudgetEditorView(
     const months = totalsByCategory.get(category.id)
     const zeroFilled = months ? [...allMonths].map((m) => months.get(m) ?? 0) : []
 
-    const own = budgetsByCategory.get(category.id) ?? []
-    let inherited: { periodMonth: string; amountCents: number } | null = null
-    for (const row of own) {
-      if (row.periodMonth > start) continue
-      if (!inherited || row.periodMonth > inherited.periodMonth) inherited = row
-    }
+    // The same carry-forward the dashboard and the forward view read, from
+    // the same function: a second implementation here is how the editor and
+    // the dashboard start disagreeing about which month a budget came from.
+    const inherited = resolveBudget(budgetsByCategory.get(category.id) ?? [], period)
 
     return {
       categoryId: category.id,

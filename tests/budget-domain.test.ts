@@ -40,10 +40,24 @@ it('carries a budget forward until a later month overrides it', () => {
     { periodMonth: '2026-12-01', amountCents: 200_000 },
   ]
 
-  expect(resolveBudget(rows, '2026-08')).toBe(120_000)
-  expect(resolveBudget(rows, '2026-10')).toBe(120_000)
-  expect(resolveBudget(rows, '2026-12')).toBe(200_000)
-  expect(resolveBudget(rows, '2027-03')).toBe(200_000)
+  expect(resolveBudget(rows, '2026-08')?.amountCents).toBe(120_000)
+  expect(resolveBudget(rows, '2026-10')?.amountCents).toBe(120_000)
+  expect(resolveBudget(rows, '2026-12')?.amountCents).toBe(200_000)
+  expect(resolveBudget(rows, '2027-03')?.amountCents).toBe(200_000)
+})
+
+it('says which month the amount in force came from', () => {
+  // The budget editor needs this to write "carried from 2026-08" under a
+  // field. It used to recover it with a second copy of the loop above.
+  const rows = [
+    { periodMonth: '2026-08-01', amountCents: 120_000 },
+    { periodMonth: '2026-12-01', amountCents: 200_000 },
+  ]
+
+  expect(resolveBudget(rows, '2026-10')).toEqual({
+    periodMonth: '2026-08-01',
+    amountCents: 120_000,
+  })
 })
 
 it('has no budget before the first one was ever set', () => {
@@ -61,7 +75,7 @@ it('resolves independently of row order', () => {
     { periodMonth: '2026-08-01', amountCents: 120_000 },
   ]
 
-  expect(resolveBudget(rows, '2026-10')).toBe(120_000)
+  expect(resolveBudget(rows, '2026-10')?.amountCents).toBe(120_000)
 })
 
 it('extrapolates variable spend but adds committed at face value', () => {

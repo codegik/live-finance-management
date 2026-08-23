@@ -1,7 +1,7 @@
 import { beforeEach, expect, it } from 'vitest'
 import { hashPassword } from '@/lib/auth/password'
 import { setBudget } from '@/lib/db/budgets'
-import { listCategories } from '@/lib/db/categories'
+import { archiveCategory, listCategories } from '@/lib/db/categories'
 import { createHousehold } from '@/lib/db/households'
 import { connections } from '@/lib/db/schema'
 import { recategorize } from '@/lib/sync/categorize'
@@ -167,16 +167,20 @@ it('carries a budget forward from an earlier month', async () => {
 
 it('shows a category with no budget as having none, not as zero', async () => {
   const { db, householdId, accountId } = await seedHousehold()
+  const supermarket = await categoryNamed(householdId, 'Supermercado')
   await insertTransaction(db, accountId, {
     description: 'ZAFFARI',
     amountCents: 10_000,
     date: '2026-08-05',
     pluggyCategory: 'Groceries',
   })
+  await recategorize(db, { householdId })
 
   const view = await getDashboardView(db, householdId, { now: NOW })
 
-  expect(view.rows[0].budgetCents).toBeNull()
+  // find(), not rows[0]: which category sorts first is a display decision
+  // (category.sortOrder), and this assertion is not about that.
+  expect(view.rows.find((r) => r.categoryId === supermarket)!.budgetCents).toBeNull()
   expect(view.totalBudgetCents).toBe(0)
 })
 
@@ -224,4 +228,63 @@ it('never counts another household', async () => {
   // must simply all be empty.
   expect(view.totalSpentCents).toBe(0)
   expect(view.rows.every((r) => r.spentCents === 0)).toBe(true)
+})
+
+// Whole-branch defect: the household total was summed from `rows`, which
+// comes from listCategories and therefore excludes archived categories --
+// while the transactions pointing at an archived category are reassigned to
+// nothing. The money stayed on /ledger and vanished from the dashboard.
+it('keeps the spend of an archived category in the household total', async () => {
+  const { db, householdId, accountId } = await seedHousehold()
+  const supermarket = await categoryNamed(householdId, 'Supermercado')
+  await insertTransaction(db, accountId, {
+    description: 'ZAFFARI',
+    amountCents: 30_000,
+    date: '2026-08-05',
+    pluggyCategory: 'Groceries',
+  })
+  await recategorize(db, { householdId })
+
+  const before = await getDashboardView(db, householdId, { now: NOW })
+  // The premise, asserted rather than assumed: the spend really is attached
+  // to the category about to be archived. Without this, archiving a category
+  // with nothing on it would "prove" the fix while proving nothing.
+  expect(before.rows.find((r) => r.categoryId === supermarket)!.spentCents).toBe(30_000)
+  expect(before.totalSpentCents).toBe(30_000)
+
+  await archiveCategory(db, householdId, supermarket)
+
+  const after = await getDashboardView(db, householdId, { now: NOW })
+
+  // Archived, so it is not drawn...
+  expect(after.rows.some((r) => r.categoryId === supermarket)).toBe(false)
+  // ...and archiving reassigned nothing, so the row is not uncategorized
+  // either -- it is in neither of the two buckets the old total added up.
+  expect(after.uncategorizedSpentCents).toBe(0)
+  expect(after.uncategorizedCount).toBe(0)
+  // The money is real, is not a transfer, and /ledger still shows it.
+  expect(after.totalSpentCents).toBe(30_000)
+})
+
+it('counts the uncategorized rows of this month only, not of all time', async () => {
+  const { db, householdId, accountId } = await seedHousehold()
+  await insertTransaction(db, accountId, {
+    description: 'ALGO DESCONHECIDO',
+    amountCents: 5_000,
+    date: '2026-08-05',
+  })
+  // Three older uncategorized rows: real work for the inbox, but not part of
+  // the amount rendered beside the count on the dashboard badge.
+  for (const date of ['2026-05-02', '2026-06-11', '2026-07-30']) {
+    await insertTransaction(db, accountId, {
+      description: 'OUTRO DESCONHECIDO',
+      amountCents: 90_000,
+      date,
+    })
+  }
+
+  const view = await getDashboardView(db, householdId, { now: NOW })
+
+  expect(view.uncategorizedCount).toBe(1)
+  expect(view.uncategorizedSpentCents).toBe(5_000)
 })

@@ -3,7 +3,12 @@ import { listBudgets } from '@/lib/db/budgets'
 import { listCategories } from '@/lib/db/categories'
 import type { Db } from '@/lib/db/client'
 import { accounts, connections, transactions } from '@/lib/db/schema'
-import { addMonths, monthBounds, resolveBudget } from '@/lib/domain/budget'
+import {
+  addMonths,
+  groupBudgetsByCategory,
+  monthBounds,
+  resolveBudget,
+} from '@/lib/domain/budget'
 import { saoPauloPeriod } from '@/lib/domain/dates'
 
 export type ForwardRow = {
@@ -17,6 +22,13 @@ export type ForwardMonth = {
   period: string
   rows: ForwardRow[]
   totalCommittedCents: number
+  /**
+   * Committed money on rows Pluggy could not categorize. Surfaced rather than
+   * dropped: instalments are the rows most likely to be uncategorized, so
+   * hiding them lets a month holding thousands of reais of parcelas read as
+   * "Nothing committed yet".
+   */
+  uncategorizedCommittedCents: number
 }
 
 const DEFAULT_MONTHS = 6
@@ -72,20 +84,26 @@ export async function getForwardView(
     listBudgets(db, householdId),
   ])
 
+  // Three maps, one pass. The per-category map decides what to DRAW; the
+  // total and the uncategorized bucket are accounting figures and come
+  // straight off the aggregate. Summing the drawn rows instead would drop
+  // both uncategorized instalments and any category since archived.
   const committedByMonth = new Map<string, Map<string, number>>()
+  const totalByMonth = new Map<string, number>()
+  const uncategorizedByMonth = new Map<string, number>()
   for (const row of committed) {
-    if (!row.categoryId) continue
+    const amount = Number(row.total)
+    totalByMonth.set(row.month, (totalByMonth.get(row.month) ?? 0) + amount)
+    if (!row.categoryId) {
+      uncategorizedByMonth.set(row.month, (uncategorizedByMonth.get(row.month) ?? 0) + amount)
+      continue
+    }
     const forMonth = committedByMonth.get(row.month) ?? new Map<string, number>()
-    forMonth.set(row.categoryId, Number(row.total))
+    forMonth.set(row.categoryId, amount)
     committedByMonth.set(row.month, forMonth)
   }
 
-  const budgetsByCategory = new Map<string, { periodMonth: string; amountCents: number }[]>()
-  for (const row of budgetRows) {
-    const list = budgetsByCategory.get(row.categoryId) ?? []
-    list.push({ periodMonth: row.periodMonth, amountCents: row.amountCents })
-    budgetsByCategory.set(row.categoryId, list)
-  }
+  const budgetsByCategory = groupBudgetsByCategory(budgetRows)
 
   return periods.map((period) => {
     const forMonth = committedByMonth.get(period) ?? new Map<string, number>()
@@ -94,13 +112,15 @@ export async function getForwardView(
       categoryId: category.id,
       categoryName: category.name,
       committedCents: forMonth.get(category.id) ?? 0,
-      budgetCents: resolveBudget(budgetsByCategory.get(category.id) ?? [], period),
+      budgetCents:
+        resolveBudget(budgetsByCategory.get(category.id) ?? [], period)?.amountCents ?? null,
     }))
 
     return {
       period,
       rows,
-      totalCommittedCents: rows.reduce((sum, row) => sum + row.committedCents, 0),
+      totalCommittedCents: totalByMonth.get(period) ?? 0,
+      uncategorizedCommittedCents: uncategorizedByMonth.get(period) ?? 0,
     }
   })
 }

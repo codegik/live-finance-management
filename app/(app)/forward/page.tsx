@@ -24,7 +24,7 @@ export default async function ForwardPage() {
               <h2>{month.period}</h2>
               <span>{brl.format(month.totalCommittedCents / 100)} committed</span>
             </header>
-            {committed.length === 0 ? (
+            {committed.length === 0 && month.uncategorizedCommittedCents === 0 ? (
               <p className="empty">Nothing committed yet.</p>
             ) : (
               <ul>
@@ -39,6 +39,17 @@ export default async function ForwardPage() {
                     </span>
                   </li>
                 ))}
+                {/* Committed money Pluggy could not categorize is still
+                    committed. It is in the total above either way, so leaving
+                    it off the list would make the total unexplainable. */}
+                {month.uncategorizedCommittedCents !== 0 ? (
+                  <li className="ledger__item">
+                    <span>Uncategorized</span>
+                    <span className="ledger__amount">
+                      {brl.format(month.uncategorizedCommittedCents / 100)}
+                    </span>
+                  </li>
+                ) : null}
               </ul>
             )}
           </section>

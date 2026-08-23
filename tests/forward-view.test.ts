@@ -1,7 +1,7 @@
 import { beforeEach, expect, it } from 'vitest'
 import { hashPassword } from '@/lib/auth/password'
 import { setBudget } from '@/lib/db/budgets'
-import { listCategories } from '@/lib/db/categories'
+import { archiveCategory, listCategories } from '@/lib/db/categories'
 import { createHousehold } from '@/lib/db/households'
 import { createRule } from '@/lib/db/rules'
 import { connections } from '@/lib/db/schema'
@@ -181,4 +181,57 @@ it('never counts another household', async () => {
   const months = await getForwardView(db, otherId, { now: NOW })
 
   expect(months.every((m) => m.totalCommittedCents === 0)).toBe(true)
+})
+
+// Whole-branch defect: `if (!row.categoryId) continue` dropped uncategorized
+// instalments before the total was computed, and the total was then summed
+// from the drawn rows. On the live data instalments are the rows most likely
+// to be uncategorized, so a month holding thousands of reais of parcelas read
+// as "Nothing committed yet".
+it('counts an uncategorized instalment instead of dropping it before the total', async () => {
+  const { db, householdId, accountId } = await seedHousehold()
+  await insertTransaction(db, accountId, {
+    description: 'LOJA DESCONHECIDA 02/06',
+    amountCents: 45_000,
+    date: '2026-09-15',
+  })
+  // Deliberately no recategorize and no rule: this is a row Pluggy could not
+  // categorize, which is exactly the shape the defect made invisible.
+
+  const months = await getForwardView(db, householdId, { now: NOW })
+
+  const september = months.find((m) => m.period === '2026-09')!
+  // The premise: it really is uncategorized, so no drawn row can carry it.
+  expect(september.rows.every((r) => r.committedCents === 0)).toBe(true)
+  expect(september.uncategorizedCommittedCents).toBe(45_000)
+  expect(september.totalCommittedCents).toBe(45_000)
+})
+
+it('keeps the committed instalments of an archived category in the total', async () => {
+  const { db, householdId, accountId } = await seedHousehold()
+  const car = await categoryNamed(householdId, 'Manutenção de carro')
+  await insertTransaction(db, accountId, {
+    description: 'AUTO MECANICA BOA 06/10',
+    amountCents: 114_709,
+    date: '2026-09-15',
+    pluggyCategory: 'Vehicle maintenance',
+  })
+  await recategorize(db, { householdId })
+  const before = await getForwardView(db, householdId, { now: NOW })
+  // Premise: the instalment really is attached to the category archived next.
+  expect(
+    before.find((m) => m.period === '2026-09')!.rows.find((r) => r.categoryId === car)!
+      .committedCents,
+  ).toBe(114_709)
+
+  await archiveCategory(db, householdId, car)
+
+  const september = (await getForwardView(db, householdId, { now: NOW })).find(
+    (m) => m.period === '2026-09',
+  )!
+
+  expect(september.rows.some((r) => r.categoryId === car)).toBe(false)
+  // Not uncategorized either: archiving reassigns nothing.
+  expect(september.uncategorizedCommittedCents).toBe(0)
+  expect(september.totalCommittedCents).toBe(114_709)
 })

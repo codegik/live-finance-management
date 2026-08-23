@@ -56,8 +56,13 @@ export type BudgetPeriodRow = {
  * Resolved here rather than by writing future rows, so editing one month
  * affects every later month with no row of its own and no backfill job can
  * leave stale amounts behind.
+ *
+ * Returns the winning ROW, not just its amount, because the budget editor
+ * also has to say where an inherited amount came from. Returning only the
+ * number is what made the editor reimplement this loop inline, and two
+ * implementations of carry-forward drift.
  */
-export function resolveBudget(rows: BudgetPeriodRow[], period: string): number | null {
+export function resolveBudget(rows: BudgetPeriodRow[], period: string): BudgetPeriodRow | null {
   const { start } = monthBounds(period)
 
   let best: BudgetPeriodRow | null = null
@@ -66,7 +71,24 @@ export function resolveBudget(rows: BudgetPeriodRow[], period: string): number |
     if (!best || row.periodMonth > best.periodMonth) best = row
   }
 
-  return best ? best.amountCents : null
+  return best
+}
+
+/**
+ * The rows `listBudgets` returns, keyed by category, ready for
+ * `resolveBudget`. Every view that resolves a budget needs exactly this, and
+ * it was copied character-for-character into three of them.
+ */
+export function groupBudgetsByCategory(
+  rows: readonly (BudgetPeriodRow & { categoryId: string })[],
+): Map<string, BudgetPeriodRow[]> {
+  const byCategory = new Map<string, BudgetPeriodRow[]>()
+  for (const row of rows) {
+    const list = byCategory.get(row.categoryId) ?? []
+    list.push({ periodMonth: row.periodMonth, amountCents: row.amountCents })
+    byCategory.set(row.categoryId, list)
+  }
+  return byCategory
 }
 
 export type PaceInput = {

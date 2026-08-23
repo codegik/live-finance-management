@@ -14,6 +14,15 @@
  * When checking accounts arrive in Slice 6 this needs a second detector --
  * matching an invoice payment leaving checking against the card it settles --
  * and this is the module it goes in.
+ *
+ * THIS SET IS DUPLICATED IN SQL. drizzle/0006_budgets.sql backfills
+ * is_transfer on the rows that predate the column, using these same four
+ * strings, because the nightly refreshTransferFlags pass is up to 24 hours
+ * away at deploy time and the dashboard is wrong for all of them. Adding a
+ * category here corrects new and re-synced rows only -- rows already in the
+ * database need a new migration. tests/transfers.test.ts asserts the two
+ * lists agree, so a silent divergence fails the suite rather than the
+ * household's totals.
  */
 export const TRANSFER_PLUGGY_CATEGORIES: ReadonlySet<string> = new Set([
   'Credit card payment',
