@@ -231,7 +231,7 @@ it('reports 500 through the route when every connection fails', async () => {
   expect(body.failed).toHaveLength(1)
 })
 
-it('recategorizes and re-flags transfers for every household after the nightly sync', async () => {
+it('recategorizes and corrects budget roles for every household after the nightly sync', async () => {
   const { db, householdId, connectionId } = await seed()
   // Every fixture transaction is touched -- and so already recategorized --
   // by its own connection's sync, so a genuinely stale row (the kind an
@@ -244,9 +244,9 @@ it('recategorizes and re-flags transfers for every household after the nightly s
     pluggyCategory: 'Supermarkets',
   })
   // An invoice payment on the same unreachable account, so nothing but
-  // refreshTransferFlags can put is_transfer right on it. This is the shape
-  // migration 0006 leaves behind on every pre-existing row: real Pluggy
-  // category, is_transfer still at its false default.
+  // refreshBudgetRoles can put budget_role right on it. This is the shape
+  // migration 0009 leaves behind on every pre-existing row: real Pluggy
+  // category, budget_role still at its SPEND default.
   const invoiceId = await insertTransaction(db, accountId, {
     description: 'PAGAMENTO FATURA',
     amountCents: -177_174_79,
@@ -264,14 +264,14 @@ it('recategorizes and re-flags transfers for every household after the nightly s
   expect(result.failed).toEqual([])
   expect(result.recategorized).toBeGreaterThan(0)
   // Asserted the way `recategorized` is: without it, deleting the
-  // refreshTransferFlags call from reconcileAll leaves the suite green, and
-  // that call is the only thing that corrects is_transfer on rows the mapper
+  // refreshBudgetRoles call from reconcileAll leaves the suite green, and
+  // that call is the only thing that corrects budget_role on rows the mapper
   // never sees.
-  expect(result.transfersFlagged).toBe(1)
-  const rows = await listTransactions(db, householdId, { includeTransfers: true })
+  expect(result.rolesCorrected).toBe(1)
+  const rows = await listTransactions(db, householdId, { includeExcluded: true })
   expect(rows.find((r) => r.pluggyTransactionId === 'tx-1')!.categoryId).not.toBeNull()
   expect(rows.find((r) => r.id === staleId)!.categoryId).not.toBeNull()
-  expect(rows.find((r) => r.id === invoiceId)!.isTransfer).toBe(true)
+  expect(rows.find((r) => r.id === invoiceId)!.budgetRole).toBe('TRANSFER')
 })
 
 // --- the household that predates the categorization migration ----------------

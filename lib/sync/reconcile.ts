@@ -6,7 +6,7 @@ import { connections } from '@/lib/db/schema'
 import type { Mailer } from '@/lib/email/resend'
 import type { PluggyClient } from '@/lib/pluggy/client'
 import { recategorize } from './categorize'
-import { refreshTransferFlags } from './transfers'
+import { refreshBudgetRoles } from './budget-roles'
 import { syncConnection } from './transactions'
 
 export async function reconcileAll(
@@ -17,7 +17,7 @@ export async function reconcileAll(
   succeeded: string[]
   failed: string[]
   recategorized: number
-  transfersFlagged: number
+  rolesCorrected: number
   alerted: number
 }> {
   const all = await db
@@ -47,7 +47,7 @@ export async function reconcileAll(
     .from(connections)
 
   let recategorized = 0
-  let transfersFlagged = 0
+  let rolesCorrected = 0
   let alerted = 0
   for (const { householdId } of households) {
     try {
@@ -70,15 +70,15 @@ export async function reconcileAll(
       // row MANUAL -- which no sync or backfill ever revisits.
       await seedCategories(db, householdId)
       await seedDefaultRules(db, householdId)
-      // The only pass that corrects is_transfer on a row the mapper did not
+      // The only pass that corrects budget_role on a row the mapper did not
       // touch -- one whose Pluggy category changed since the last sync, or
-      // one 0006 backfilled and the connector has since re-categorized.
+      // one 0009 backfilled and the connector has since re-categorized.
       //
       // Order relative to recategorize is NOT load-bearing: the two passes
-      // key on independent columns (is_transfer vs category_id), and
+      // key on independent columns (budget_role vs category_id), and
       // recategorize produces no inbox count for this one to influence.
-      const { flagged } = await refreshTransferFlags(db, householdId)
-      transfersFlagged += flagged
+      const { changed: roled } = await refreshBudgetRoles(db, householdId)
+      rolesCorrected += roled
       const { changed } = await recategorize(db, { householdId })
       recategorized += changed
     } catch (error) {
@@ -103,5 +103,5 @@ export async function reconcileAll(
     }
   }
 
-  return { succeeded, failed, recategorized, transfersFlagged, alerted }
+  return { succeeded, failed, recategorized, rolesCorrected, alerted }
 }

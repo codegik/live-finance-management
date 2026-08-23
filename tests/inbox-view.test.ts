@@ -4,7 +4,7 @@ import { listCategories } from '@/lib/db/categories'
 import { createHousehold } from '@/lib/db/households'
 import { createRule } from '@/lib/db/rules'
 import { connections } from '@/lib/db/schema'
-import { refreshTransferFlags } from '@/lib/sync/transfers'
+import { refreshBudgetRoles } from '@/lib/sync/budget-roles'
 import { countUncategorized, getInboxView } from '@/lib/views/inbox'
 import { resetDb, testDb, useTestEnv } from './helpers/db'
 import { insertTransaction, seedAccount } from './helpers/transactions'
@@ -105,7 +105,7 @@ it('keeps invoice payments out of the inbox, since they are not work', async () 
     pluggyCategory: 'Credit card payment',
   })
   await insertTransaction(db, accountId, { description: 'ZAFFARI' })
-  await refreshTransferFlags(db, householdId)
+  await refreshBudgetRoles(db, householdId)
 
   const view = await getInboxView(db, householdId)
 

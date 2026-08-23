@@ -73,7 +73,7 @@ export async function getForwardView(
       .where(
         and(
           eq(connections.householdId, householdId),
-          eq(transactions.isTransfer, false),
+          eq(transactions.budgetRole, 'SPEND'),
           isNotNull(transactions.installmentTotal),
           gte(transactions.date, from),
           lte(transactions.date, to),

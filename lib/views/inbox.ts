@@ -35,7 +35,7 @@ function householdUncategorized(exec: Executor, householdId: string) {
       and(
         eq(connections.householdId, householdId),
         isNull(transactions.categoryId),
-        eq(transactions.isTransfer, false),
+        eq(transactions.budgetRole, 'SPEND'),
       ),
     )
     .groupBy(transactions.merchantNormalized)
@@ -74,7 +74,7 @@ export async function countUncategorized(exec: Executor, householdId: string): P
       and(
         eq(connections.householdId, householdId),
         isNull(transactions.categoryId),
-        eq(transactions.isTransfer, false),
+        eq(transactions.budgetRole, 'SPEND'),
       ),
     )
 

@@ -54,3 +54,14 @@ it('keeps the 0006 backfill in step with the transfer set it copies', () => {
     expect(backfill).toContain(`'${category}'`)
   }
 })
+
+it('keeps the 0009 backfill in step with the income set it copies', () => {
+  const root = join(dirname(fileURLToPath(import.meta.url)), '..')
+  const sql = readFileSync(join(root, 'drizzle/0009_budget_role.sql'), 'utf8')
+  const backfill = sql.slice(sql.indexOf(`UPDATE "transaction" SET "budget_role" = 'INCOME'`))
+
+  expect(backfill).not.toBe('')
+  for (const category of INCOME_PLUGGY_CATEGORIES) {
+    expect(backfill).toContain(`'${category}'`)
+  }
+})

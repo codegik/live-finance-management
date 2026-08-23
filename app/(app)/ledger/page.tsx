@@ -19,9 +19,9 @@ export default async function LedgerPage({
   // instead. Any other failure still propagates and surfaces as a 500.
   const session = await requireSession().catch(toSignInOrThrow)
   const { transfers } = await searchParams
-  const includeTransfers = transfers === '1'
+  const includeExcluded = transfers === '1'
 
-  const view = await getLedgerView(getDb(), session.householdId, { includeTransfers })
+  const view = await getLedgerView(getDb(), session.householdId, { includeExcluded })
 
   return (
     <main className="page">
@@ -32,8 +32,8 @@ export default async function LedgerPage({
             {view.uncategorizedCount} to categorize
           </Link>
         ) : null}
-        <Link href={includeTransfers ? '/ledger' : '/ledger?transfers=1'}>
-          {includeTransfers ? 'Hide transfers' : 'Show transfers'}
+        <Link href={includeExcluded ? '/ledger' : '/ledger?transfers=1'}>
+          {includeExcluded ? 'Hide transfers and income' : 'Show transfers and income'}
         </Link>
         <ConnectCardButton />
       </header>

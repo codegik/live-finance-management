@@ -51,7 +51,7 @@ export async function getBudgetEditorView(
       .where(
         and(
           eq(connections.householdId, householdId),
-          eq(transactions.isTransfer, false),
+          eq(transactions.budgetRole, 'SPEND'),
           lt(transactions.date, currentMonthStart),
         ),
       )

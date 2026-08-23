@@ -37,9 +37,9 @@ const OBSERVED: [category: string, volume: number][] = [
 
 /**
  * Deliberately unmapped: an invoice payment, a transfer between own accounts
- * and a bank fee are not household budget lines. Slice 6 flags them
- * `is_transfer` so they do not double-count; until then they stay
- * uncategorized rather than inflating a category.
+ * and a bank fee are not household budget lines. Slice 6 gives them
+ * `budget_role = 'TRANSFER'` so they do not double-count; until then they
+ * stay uncategorized rather than inflating a category.
  */
 const INTENTIONALLY_UNMAPPED = new Set([
   'Tax on financial operations',

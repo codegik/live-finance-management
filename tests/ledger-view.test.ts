@@ -5,7 +5,7 @@ import { connections } from '@/lib/db/schema'
 import { createPluggyClient } from '@/lib/pluggy/client'
 import { attachConnection } from '@/lib/sync/connect'
 import { syncConnection } from '@/lib/sync/transactions'
-import { refreshTransferFlags } from '@/lib/sync/transfers'
+import { refreshBudgetRoles } from '@/lib/sync/budget-roles'
 import { getLedgerView } from '@/lib/views/ledger'
 import { resetDb, testDb, useTestEnv } from './helpers/db'
 import { startPluggyServer } from './helpers/pluggy-server'
@@ -132,14 +132,14 @@ it('hides transfers by default and shows them on request', async () => {
     date: '2026-08-22',
     pluggyCategory: 'Credit card payment',
   })
-  await refreshTransferFlags(db, householdId)
+  await refreshBudgetRoles(db, householdId)
 
   const hidden = await getLedgerView(db, householdId)
-  const shown = await getLedgerView(db, householdId, { includeTransfers: true })
+  const shown = await getLedgerView(db, householdId, { includeExcluded: true })
 
   const descriptions = (view: typeof hidden) => view.days.flatMap((d) => d.items).map((i) => i.description)
   expect(descriptions(hidden)).not.toContain('PAGAMENTO FATURA')
   expect(descriptions(shown)).toContain('PAGAMENTO FATURA')
-  expect(hidden.includingTransfers).toBe(false)
-  expect(shown.includingTransfers).toBe(true)
+  expect(hidden.includingExcluded).toBe(false)
+  expect(shown.includingExcluded).toBe(true)
 })
