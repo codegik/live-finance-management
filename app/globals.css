@@ -79,3 +79,13 @@ input, button { font: inherit; padding: 0.5rem; }
   color: #166534;
   font-size: 0.85rem;
 }
+
+.form__error {
+  color: #b91c1c;
+  font-size: 0.85rem;
+}
+
+.empty {
+  color: #6b7280;
+  padding: 1.5rem 0;
+}
