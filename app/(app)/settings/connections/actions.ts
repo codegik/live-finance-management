@@ -3,8 +3,15 @@
 import { revalidatePath } from 'next/cache'
 import { requireSession } from '@/lib/auth/session'
 import { getDb } from '@/lib/db/client'
-import { deleteConnection } from '@/lib/db/connections'
-import { type ConnectionState, REMOVED_MESSAGE, UNKNOWN_CONNECTION_ERROR } from './state'
+import { deleteConnection, setAccountDays } from '@/lib/db/connections'
+import { SAVED_MESSAGE } from '../categories/state'
+import {
+  type ConnectionState,
+  INVALID_DAY_ERROR,
+  REMOVED_MESSAGE,
+  UNKNOWN_ACCOUNT_ERROR,
+  UNKNOWN_CONNECTION_ERROR,
+} from './state'
 
 export async function removeConnectionAction(
   _prev: ConnectionState,
@@ -24,4 +31,38 @@ export async function removeConnectionAction(
   revalidatePath('/dashboard')
   revalidatePath('/ledger')
   return { error: null, message: REMOVED_MESSAGE }
+}
+
+function parseDay(raw: FormDataEntryValue | null): number | null | 'INVALID' {
+  const value = String(raw ?? '').trim()
+  if (!value) return null
+  const day = Number(value)
+  // 31 is allowed even in a 30-day month: it means "the last day it can be",
+  // and this is invoice context, not a date the system computes with.
+  if (!Number.isInteger(day) || day < 1 || day > 31) return 'INVALID'
+  return day
+}
+
+export async function saveAccountDaysAction(
+  _prev: ConnectionState,
+  formData: FormData,
+): Promise<ConnectionState> {
+  const session = await requireSession()
+  const accountId = String(formData.get('accountId') ?? '')
+  if (!accountId) return { error: UNKNOWN_ACCOUNT_ERROR, message: null }
+
+  const dueDay = parseDay(formData.get('dueDay'))
+  const closingDay = parseDay(formData.get('closingDay'))
+  if (dueDay === 'INVALID' || closingDay === 'INVALID') {
+    return { error: INVALID_DAY_ERROR, message: null }
+  }
+
+  const { updated } = await setAccountDays(getDb(), session.householdId, accountId, {
+    dueDay,
+    closingDay,
+  })
+  if (!updated) return { error: UNKNOWN_ACCOUNT_ERROR, message: null }
+
+  revalidatePath('/settings/connections')
+  return { error: null, message: SAVED_MESSAGE }
 }

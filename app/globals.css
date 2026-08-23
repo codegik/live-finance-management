@@ -100,6 +100,14 @@ input, button { font: inherit; padding: 0.5rem; }
   padding: 0.5rem;
 }
 
+.settings__inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: flex-end;
+  margin-top: 0.25rem;
+}
+
 .form__message {
   color: #166534;
   font-size: 0.85rem;

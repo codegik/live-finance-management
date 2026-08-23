@@ -1,7 +1,7 @@
 'use client'
 
 import { useActionState } from 'react'
-import { removeConnectionAction } from './actions'
+import { removeConnectionAction, saveAccountDaysAction } from './actions'
 import type { ConnectionState } from './state'
 
 const INITIAL: ConnectionState = { error: null, message: null }
@@ -36,6 +36,41 @@ export function RemoveConnectionForm({
       ) : null}
       <button type="submit" disabled={pending}>
         {pending ? 'Removing…' : `Yes, delete ${transactionCount} transactions`}
+      </button>
+    </form>
+  )
+}
+
+export function AccountDaysForm({
+  accountId,
+  dueDay,
+  closingDay,
+}: {
+  accountId: string
+  dueDay: number | null
+  closingDay: number | null
+}) {
+  const [state, formAction, pending] = useActionState(saveAccountDaysAction, INITIAL)
+
+  return (
+    <form action={formAction} className="settings__inline">
+      <input type="hidden" name="accountId" value={accountId} />
+      <label>
+        Due day
+        <input name="dueDay" type="number" min={1} max={31} defaultValue={dueDay ?? ''} />
+      </label>
+      <label>
+        Closing day
+        <input name="closingDay" type="number" min={1} max={31} defaultValue={closingDay ?? ''} />
+      </label>
+      {state.error ? (
+        <p role="alert" className="form__error">
+          {state.error}
+        </p>
+      ) : null}
+      {state.message ? <p className="form__message">{state.message}</p> : null}
+      <button type="submit" disabled={pending}>
+        {pending ? 'Saving…' : 'Save'}
       </button>
     </form>
   )

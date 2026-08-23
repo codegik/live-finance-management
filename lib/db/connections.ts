@@ -1,4 +1,4 @@
-import { and, eq, sql } from 'drizzle-orm'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 import { staleReason, type StaleReason } from '@/lib/domain/health'
 import type { Db } from './client'
 import { listHouseholdUsers } from './households'
@@ -47,6 +47,8 @@ export type ConnectionAccount = {
   name: string
   last4: string | null
   dueDay: number | null
+  closingDay: number | null
+  overridden: boolean
 }
 
 export type ConnectionDetail = {
@@ -94,7 +96,9 @@ export async function listConnectionDetails(
         type: account.type,
         name: account.name,
         last4: account.last4,
-        dueDay: account.dueDay,
+        dueDay: account.dueDayOverride ?? account.dueDay,
+        closingDay: account.closingDayOverride ?? account.closingDay,
+        overridden: account.dueDayOverride != null || account.closingDayOverride != null,
       })),
   }))
 }
@@ -130,4 +134,32 @@ export async function deleteConnection(
     .where(and(eq(connections.householdId, householdId), eq(connections.id, connectionId)))
     .returning({ id: connections.id })
   return { removed: rows.length > 0 }
+}
+
+/**
+ * Sets the household's own due and closing day for one account. Null clears
+ * the override and falls back to whatever Pluggy reports.
+ */
+export async function setAccountDays(
+  db: Db,
+  householdId: string,
+  accountId: string,
+  days: { dueDay: number | null; closingDay: number | null },
+): Promise<{ updated: boolean }> {
+  const rows = await db
+    .update(accounts)
+    .set({ dueDayOverride: days.dueDay, closingDayOverride: days.closingDay })
+    .where(
+      and(
+        eq(accounts.id, accountId),
+        // Scoped in the UPDATE itself: an account id from another household
+        // must update nothing, not merely be checked first.
+        inArray(
+          accounts.connectionId,
+          db.select({ id: connections.id }).from(connections).where(eq(connections.householdId, householdId)),
+        ),
+      ),
+    )
+    .returning({ id: accounts.id })
+  return { updated: rows.length > 0 }
 }

@@ -4,7 +4,7 @@ import { requireSession, toSignInOrThrow } from '@/lib/auth/session'
 import { getDb } from '@/lib/db/client'
 import { countConnectionTransactions, listConnectionDetails } from '@/lib/db/connections'
 import { HOUSEHOLD_TIME_ZONE } from '@/lib/domain/dates'
-import { RemoveConnectionForm } from './ConnectionForms'
+import { AccountDaysForm, RemoveConnectionForm } from './ConnectionForms'
 
 export const dynamic = 'force-dynamic'
 
@@ -71,7 +71,13 @@ export default async function ConnectionsSettingsPage({
                     <li key={account.id}>
                       {account.name} {account.last4 ? `••${account.last4}` : null} ·{' '}
                       {account.type === 'CREDIT' ? 'card' : 'checking'}
-                      {account.dueDay ? ` · due on the ${account.dueDay}` : null}
+                      {account.type === 'CREDIT' ? (
+                        <AccountDaysForm
+                          accountId={account.id}
+                          dueDay={account.dueDay}
+                          closingDay={account.closingDay}
+                        />
+                      ) : null}
                     </li>
                   ))}
                 </ul>

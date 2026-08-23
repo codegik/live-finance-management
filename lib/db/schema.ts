@@ -98,6 +98,11 @@ export const accounts = pgTable(
     dueDay: integer('due_day'),
     closingDay: integer('closing_day'),
     creditLimitCents: bigint('credit_limit_cents', { mode: 'number' }),
+    // Pluggy's value stays in due_day / closing_day and is rewritten freely by
+    // every sync. A household override lives here, so an edit can never be
+    // clobbered and the sync path needs no knowledge that overrides exist.
+    dueDayOverride: integer('due_day_override'),
+    closingDayOverride: integer('closing_day_override'),
   },
   (t) => [uniqueIndex('account_pluggy_unique').on(t.pluggyAccountId)],
 )

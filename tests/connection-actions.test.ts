@@ -1,8 +1,10 @@
 import { beforeEach, expect, it, vi } from 'vitest'
 import { hashPassword } from '@/lib/auth/password'
 import { createHousehold } from '@/lib/db/households'
-import { connections } from '@/lib/db/schema'
+import { listConnectionDetails } from '@/lib/db/connections'
+import { accounts, connections } from '@/lib/db/schema'
 import { listTransactions } from '@/lib/db/transactions'
+import { eq } from 'drizzle-orm'
 import { resetDb, testDb, useTestEnv } from './helpers/db'
 import { insertTransaction, seedAccount } from './helpers/transactions'
 
@@ -15,8 +17,12 @@ vi.mock('@/lib/auth/session', () => ({
 }))
 vi.mock('next/cache', () => ({ revalidatePath: () => {} }))
 
-const { removeConnectionAction } = await import('@/app/(app)/settings/connections/actions')
-const { UNKNOWN_CONNECTION_ERROR } = await import('@/app/(app)/settings/connections/state')
+const { removeConnectionAction, saveAccountDaysAction } = await import(
+  '@/app/(app)/settings/connections/actions'
+)
+const { INVALID_DAY_ERROR, UNKNOWN_ACCOUNT_ERROR, UNKNOWN_CONNECTION_ERROR } = await import(
+  '@/app/(app)/settings/connections/state'
+)
 
 const EMPTY = { error: null, message: null }
 
@@ -85,4 +91,91 @@ it('refuses to remove another household connection', async () => {
   expect(state.error).toBe(UNKNOWN_CONNECTION_ERROR)
   const survivors = await listTransactions(db, theirs.householdId, { includeExcluded: true })
   expect(survivors).toHaveLength(1)
+})
+
+it('keeps an overridden due day across a sync that rewrites the Pluggy value', async () => {
+  const db = testDb()
+  const { householdId, userId } = await createHousehold(db, {
+    name: 'Klassmann',
+    owner: { email: 'inacio@example.com', name: 'Inacio', passwordHash: await hashPassword('pw') },
+  })
+  session.current = { householdId, id: userId }
+  const [connection] = await db
+    .insert(connections)
+    .values({
+      householdId,
+      ownerUserId: userId,
+      pluggyItemId: 'item-nubank-1',
+      institution: 'Nubank',
+      status: 'UPDATED',
+      lastSyncedAt: new Date(),
+    })
+    .returning({ id: connections.id })
+  const accountId = await seedAccount(db, connection.id)
+  await db.update(accounts).set({ dueDay: 10 }).where(eq(accounts.id, accountId))
+
+  const state = await saveAccountDaysAction(EMPTY, form({ accountId, dueDay: '15', closingDay: '3' }))
+  expect(state.error).toBeNull()
+
+  // What a sync does: rewrite the Pluggy-sourced column. The override must
+  // survive it, which is the entire reason it is a separate column.
+  await db.update(accounts).set({ dueDay: 10 }).where(eq(accounts.id, accountId))
+
+  const [detail] = await listConnectionDetails(db, householdId)
+  expect(detail.accounts[0].dueDay).toBe(15)
+  expect(detail.accounts[0].closingDay).toBe(3)
+})
+
+it('rejects a day outside the month', async () => {
+  const db = testDb()
+  const { householdId, userId } = await createHousehold(db, {
+    name: 'Klassmann',
+    owner: { email: 'inacio@example.com', name: 'Inacio', passwordHash: await hashPassword('pw') },
+  })
+  session.current = { householdId, id: userId }
+  const [connection] = await db
+    .insert(connections)
+    .values({
+      householdId,
+      ownerUserId: userId,
+      pluggyItemId: 'item-nubank-2',
+      institution: 'Nubank',
+      status: 'UPDATED',
+      lastSyncedAt: new Date(),
+    })
+    .returning({ id: connections.id })
+  const accountId = await seedAccount(db, connection.id)
+
+  const state = await saveAccountDaysAction(EMPTY, form({ accountId, dueDay: '32', closingDay: '' }))
+
+  expect(state.error).toBe(INVALID_DAY_ERROR)
+})
+
+it('refuses to set days on another household account', async () => {
+  const db = testDb()
+  const mine = await createHousehold(db, {
+    name: 'Klassmann',
+    owner: { email: 'inacio@example.com', name: 'Inacio', passwordHash: await hashPassword('pw') },
+  })
+  const theirs = await createHousehold(db, {
+    name: 'Other',
+    owner: { email: 'other@example.com', name: 'Other', passwordHash: await hashPassword('pw') },
+  })
+  session.current = { householdId: mine.householdId, id: mine.userId }
+  const [connection] = await db
+    .insert(connections)
+    .values({
+      householdId: theirs.householdId,
+      ownerUserId: theirs.userId,
+      pluggyItemId: 'item-theirs-2',
+      institution: 'Itau',
+      status: 'UPDATED',
+      lastSyncedAt: new Date(),
+    })
+    .returning({ id: connections.id })
+  const accountId = await seedAccount(db, connection.id)
+
+  const state = await saveAccountDaysAction(EMPTY, form({ accountId, dueDay: '15', closingDay: '' }))
+
+  expect(state.error).toBe(UNKNOWN_ACCOUNT_ERROR)
 })
