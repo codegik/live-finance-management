@@ -115,13 +115,31 @@ already carry them.
 
 Brazilian card descriptors are noisy in predictable ways.
 `ZAFFARI PORTO ALEG *0421` and `ZAFFARI CENTRO PARC 03/12` are the same store.
-`normalizeMerchant(raw)` uppercases, strips accents, removes `PARC nn/nn` and
-bare `nn/nn` suffixes, drops asterisk-delimited noise and trailing store
-numbers, and collapses whitespace — resolving both to `ZAFFARI`. Rules match
-on the normalized form, so one rule covers every future visit.
+Two mechanisms close that gap, and it matters which does which.
 
-Pluggy's v2 payloads frequently carry no merchant object, so normalization
-falls back to the transaction description when `merchant_raw` is null.
+**The merchant name, when Pluggy supplies one.** v2 payloads often carry a
+`merchant` object whose `name` is already the clean brand (`Zaffari`).
+Normalization prefers it and falls back to the description only when it is
+absent — the single largest source of collapsed variants, and it costs
+nothing.
+
+**Deterministic cleanup, for the rest.** `normalizeMerchant(raw)` uppercases,
+strips accents, removes `PARC nn/nn` and bare `nn/nn` suffixes, drops
+asterisk-delimited noise and trailing store numbers, and collapses whitespace.
+
+What it deliberately does **not** do is strip city and branch fragments.
+Reducing `ZAFFARI PORTO ALEG` to `ZAFFARI` requires knowing that
+`PORTO ALEG` is a place, which needs a gazetteer of Brazilian place names and
+their abbreviations. A heuristic that guessed — dropping trailing tokens, say
+— would merge genuinely different merchants and silently misfile their spend.
+An extra inbox group is a visible, one-tap cost; a wrongly merged merchant is
+an invisible, wrong budget.
+
+So where Pluggy gives no merchant name, `ZAFFARI PORTO ALEG` and
+`ZAFFARI CENTRO` arrive as two inbox groups. **A `CONTAINS ZAFFARI` rule
+unifies them permanently** — which is the concrete reason `CONTAINS` exists as
+a match type, and why the inbox's rule prompt lets the pattern be edited down
+before it is saved.
 
 **Versioning without a version column.** The parent spec notes that changing
 the normalizer requires a backfill. Rather than stamping a version on every
@@ -182,7 +200,8 @@ Mobile-first, consistent with the existing ledger.
 **`/inbox`** — uncategorized transactions grouped by normalized merchant,
 largest total first: *"ZAFFARI — 7 transactions, R$ 842,10"*. Tapping opens a
 category sheet and offers **"Always categorize ZAFFARI as Supermercado?"**,
-defaulted on.
+defaulted on, with the pattern and match type editable so a branch-specific
+merchant can be shortened to the brand and saved as `CONTAINS`.
 
 The toggle decides `category_source`, and the distinction matters:
 
@@ -245,20 +264,24 @@ Parent spec case **4 — a hand-set category is unchanged after a subsequent
 sync reporting a different Pluggy category** — is covered here; it is the
 guarantee this slice exists to make. Alongside it:
 
-1. Both `ZAFFARI` descriptor variants collapse into one inbox group.
-2. Full precedence: `MANUAL` beats rule beats Pluggy beats inbox.
-3. Creating a rule backfills past non-`MANUAL` transactions and leaves
+1. A descriptor's `PARC 03/12` and `*0421` suffixes are stripped, and a
+   transaction whose Pluggy payload carries `merchant.name` normalizes from
+   that name rather than from its noisier description.
+2. Two branch variants of one merchant arrive as separate inbox groups, and a
+   single `CONTAINS` rule categorizes both — including retroactively.
+3. Full precedence: `MANUAL` beats rule beats Pluggy beats inbox.
+4. Creating a rule backfills past non-`MANUAL` transactions and leaves
    `MANUAL` ones untouched.
-4. Deleting a rule returns its transactions to the inbox.
-5. An archived category still renders on transactions carrying it, and is
+5. Deleting a rule returns its transactions to the inbox.
+6. An archived category still renders on transactions carrying it, and is
    absent from the picker.
-6. A transaction with no Pluggy merchant normalizes from its description.
-7. Recategorization is idempotent: running it twice changes nothing the second
+7. A transaction with no Pluggy merchant normalizes from its description.
+8. Recategorization is idempotent: running it twice changes nothing the second
    time.
-8. Assigning a group with the rule toggle off writes `MANUAL` and creates no
+9. Assigning a group with the rule toggle off writes `MANUAL` and creates no
    rule; assigning with it on writes `RULE` and a later edit to that rule
    still moves those transactions.
-9. An `EXACT` rule beats a `CONTAINS` rule that also matches, at their default
+10. An `EXACT` rule beats a `CONTAINS` rule that also matches, at their default
    priorities.
 
 ## Definition of done
@@ -272,11 +295,12 @@ guarantee this slice exists to make. Alongside it:
 
 ## Risks
 
-- **Normalization is a heuristic.** Over-aggressive stripping merges two
-  genuinely different merchants into one group; under-aggressive stripping
-  splits one merchant across several. The nightly household-wide recompute
-  makes tuning cheap, and the failure is visible in the inbox rather than
-  silent in a budget.
+- **Normalization is deliberately conservative,** so one merchant will
+  sometimes split across several inbox groups where Pluggy supplies no
+  merchant name. `CONTAINS` rules are the intended remedy. The bias is chosen:
+  a split merchant is visible in the inbox, a wrongly merged one is a silently
+  wrong budget. The nightly household-wide recompute makes tuning cheap if the
+  split proves annoying in practice.
 - **Pluggy's taxonomy can change.** New or renamed category strings fall
   through to the inbox rather than mapping wrongly, which is the safe
   direction, but the map needs occasional attention.
