@@ -11,8 +11,13 @@
  *
  * Deliberately not stored as a synthesised projection: the connector supplies
  * the future parcelas itself, so there is nothing to generate.
+ *
+ * Word boundaries fail on `*Clube07/12` because the digits follow a word
+ * character; we use negative lookaround guards instead to assert non-digit
+ * neighbours. This allows digits glued to letters (like asterisk noise) but
+ * rejects digits glued to digits (like parsing '10/12' from 'POSTO 44710/12').
  */
-const INSTALLMENT = /(?:PARC(?:ELA)?\.?\s*)?(\d{1,2})\s*\/\s*(\d{1,2})/
+const INSTALLMENT = /(?:PARC(?:ELA)?\.?\s*)?(?<!\d)(\d{1,2})\s*\/\s*(\d{1,2})(?!\d)/
 
 export type Installment = { number: number; total: number }
 

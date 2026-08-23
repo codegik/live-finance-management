@@ -28,3 +28,8 @@ it('rejects a suffix that cannot be a real instalment', () => {
   expect(parseInstallment('LOJA 13/12')).toBeNull()
   expect(parseInstallment('LOJA 01/01')).toBeNull()
 })
+
+it('does not read a parcel out of the tail of a longer number', () => {
+  // Without a digit guard this yields a phantom 10-part commitment.
+  expect(parseInstallment('POSTO 44710/12')).toBeNull()
+})
