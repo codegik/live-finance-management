@@ -220,12 +220,16 @@ not twelve. An inbox that cannot reach empty stops being read.
 
 **`/settings/categories`** — the seeded list, with add, rename, and archive.
 
-**`/settings/rules`** — what the system has learned, with create, edit and
-delete. Inbox-created rules are always `EXACT` on the normalized merchant with
-priority `100`; a hand-written `CONTAINS` rule defaults to priority `200`, so
-a specific merchant match beats a broad substring match unless you deliberately
-reorder them. Without this screen `CONTAINS` would be a match type nothing
-could ever create.
+**`/settings/rules`** — what the system has learned, with create and delete.
+Inbox-created rules are always `EXACT` on the normalized merchant with priority
+`100`; a hand-written `CONTAINS` rule defaults to priority `200`, so a specific
+merchant match beats a broad substring match. Without this screen `CONTAINS`
+would be a match type nothing could ever create.
+
+There is no separate edit: deleting a rule and creating the replacement runs
+the backfill in both directions — the old rule's transactions return to the
+inbox, the new rule claims what it matches — which an in-place edit would have
+to reimplement to be correct.
 
 **`/ledger`** — each transaction gains a category chip, and the header gains
 an uncategorized-count badge linking to the inbox. This is the only change to
