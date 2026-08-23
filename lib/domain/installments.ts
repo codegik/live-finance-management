@@ -17,13 +17,15 @@
  * neighbours. This allows digits glued to letters (like asterisk noise) but
  * rejects digits glued to digits (like parsing '10/12' from 'POSTO 44710/12').
  *
- * The trailing guard rejects a following SLASH as well as a following digit,
- * because a Brazilian date is spelled the same way an instalment is:
- * 'PAGTO 01/12/2024' would otherwise read as parcel 1 of 12, and any
- * DD/MM/YYYY with DD <= MM becomes a phantom commitment in the forward view
- * and is wrongly excluded from pace's variable extrapolation.
+ * The slash guards are SYMMETRIC -- a candidate may neither be followed nor
+ * preceded by a slash -- because a Brazilian date is spelled the same way an
+ * instalment is. The trailing guard alone stops 'PAGTO 01/12/24' matching at
+ * '01/12', but the engine then just slides along and matches '12/24' as
+ * parcel 12 of 24. Any DD/MM/YY(YY) with DD <= MM would otherwise become a
+ * phantom commitment in the forward view, and be wrongly excluded from
+ * pace's variable extrapolation.
  */
-const INSTALLMENT = /(?:PARC(?:ELA)?\.?\s*)?(?<!\d)(\d{1,2})\s*\/\s*(\d{1,2})(?![\d/])/
+const INSTALLMENT = /(?:PARC(?:ELA)?\.?\s*)?(?<![\d/])(\d{1,2})\s*\/\s*(\d{1,2})(?![\d/])/
 
 export type Installment = { number: number; total: number }
 

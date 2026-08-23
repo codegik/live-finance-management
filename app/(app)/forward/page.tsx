@@ -25,7 +25,18 @@ export default async function ForwardPage() {
               <span>{brl.format(month.totalCommittedCents / 100)} committed</span>
             </header>
             {committed.length === 0 && month.uncategorizedCommittedCents === 0 ? (
-              <p className="empty">Nothing committed yet.</p>
+              // The header prints the AGGREGATE total, but the list is built
+              // from rows, which exclude archived categories. Saying "nothing
+              // committed" under a non-zero total contradicts the number
+              // beside it; the total is the one to believe.
+              month.totalCommittedCents === 0 ? (
+                <p className="empty">Nothing committed yet.</p>
+              ) : (
+                <p className="empty">
+                  All of this month&rsquo;s committed money is on a category that has been
+                  archived.
+                </p>
+              )
             ) : (
               <ul>
                 {committed.map((row) => (

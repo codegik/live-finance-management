@@ -291,6 +291,21 @@ it('rejects a malformed period as a form error rather than a 500', async () => {
   expect(await listBudgets(db, householdId)).toEqual([])
 })
 
+it('rejects a month that cannot exist rather than 500ing on it', async () => {
+  const { db, householdId, categories } = await seedHousehold()
+
+  // Shaped like a period, so a \d{2} month check waves it through -- and
+  // then monthBounds throws INVALID_PERIOD:2026-13, which matches neither
+  // catch arm and escapes as the 500 the guard exists to prevent.
+  const result = await saveBudgetsAction(
+    EMPTY,
+    form({ period: '2026-13', [`amount:${categories[0].id}`]: '100' }),
+  )
+
+  expect(result.error).toBe(INVALID_PERIOD_ERROR)
+  expect(await listBudgets(db, householdId)).toEqual([])
+})
+
 it('rejects a category id that could not be a uuid rather than letting Postgres cast it', async () => {
   const { db, householdId } = await seedHousehold()
 

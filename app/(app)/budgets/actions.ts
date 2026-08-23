@@ -12,7 +12,11 @@ import {
   type BudgetState,
 } from './state'
 
-const PERIOD = /^\d{4}-\d{2}$/
+// The month half has to be 01..12, not any two digits: '2026-13' passes a
+// looser shape check, reaches monthBounds, and throws INVALID_PERIOD:2026-13 --
+// a message matching neither catch arm below, so it escapes as the very 500
+// this guard exists to prevent.
+const PERIOD = /^\d{4}-(0[1-9]|1[0-2])$/
 // Postgres rejects a non-UUID string cast to uuid with an error that matches
 // neither catch arm below, so it has to be caught before it reaches the query.
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i

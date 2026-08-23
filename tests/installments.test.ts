@@ -44,6 +44,15 @@ it('does not read a Brazilian date as an instalment', () => {
   expect(parseInstallment('PIX 05/09/2026')).toBeNull()
 })
 
+it('does not read a two-digit-year date as an instalment', () => {
+  // The trailing guard alone only stops the match STARTING at '01/12'; the
+  // engine then slides one field along and reads '12/24' -- a valid-looking
+  // parcel 12 of 24, a phantom commitment two years wide. Only the symmetric
+  // LEADING slash guard rejects a candidate that follows a slash.
+  expect(parseInstallment('PAGTO 01/12/24')).toBeNull()
+  expect(parseInstallment('BOLETO 03/06/28')).toBeNull()
+})
+
 it('still reads a suffix glued to a trailing letter', () => {
   // Deliberate looseness: real descriptors truncate mid-word, and the
   // digit/slash guards are about neighbouring NUMBERS, not letters.

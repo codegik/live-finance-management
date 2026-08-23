@@ -165,12 +165,12 @@ input, button { font: inherit; padding: 0.5rem; }
   background: #d97706;
 }
 
-.month-picker {
-  font-size: 0.9rem;
+.budget__pace {
+  font-size: 0.8rem;
   color: #6b7280;
 }
 
-.budget__pace {
-  font-size: 0.8rem;
+.month-picker {
+  font-size: 0.9rem;
   color: #6b7280;
 }

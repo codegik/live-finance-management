@@ -15,7 +15,10 @@ export default async function BudgetsPage({
 }) {
   const session = await requireSession().catch(toSignInOrThrow)
   const { period: requested } = await searchParams
-  const period = /^\d{4}-\d{2}$/.test(requested ?? '')
+  // Same 01..12 month guard as the action: '2026-13' is shaped like a period
+  // but is not one, and would reach monthBounds and 500 the request. An
+  // unreadable ?period is not worth an error page -- fall back to this month.
+  const period = /^\d{4}-(0[1-9]|1[0-2])$/.test(requested ?? '')
     ? (requested as string)
     : saoPauloPeriod(new Date())
 
