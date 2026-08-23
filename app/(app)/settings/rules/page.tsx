@@ -2,7 +2,7 @@ import { requireSession, toSignInOrThrow } from '@/lib/auth/session'
 import { listCategories } from '@/lib/db/categories'
 import { getDb } from '@/lib/db/client'
 import { listRules } from '@/lib/db/rules'
-import { createRuleAction, deleteRuleAction } from './actions'
+import { CreateRuleForm, DeleteRuleForm } from './RuleForms'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,33 +23,7 @@ export default async function RulesSettingsPage() {
       {/* The inbox only ever writes EXACT rules. This form is the only way a
           CONTAINS rule -- the thing that unifies branch variants of one
           merchant -- can be created. */}
-      <form action={createRuleAction as unknown as (formData: FormData) => void}>
-        <label>
-          Match
-          <select name="matchType" defaultValue="CONTAINS">
-            <option value="CONTAINS">anything containing</option>
-            <option value="EXACT">exactly</option>
-          </select>
-        </label>
-        <label>
-          Pattern
-          <input name="pattern" type="text" required />
-        </label>
-        <label>
-          Category
-          <select name="categoryId" required defaultValue="">
-            <option value="" disabled>
-              Choose…
-            </option>
-            {categories.map((category) => (
-              <option key={category.id} value={category.id}>
-                {category.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button type="submit">Add rule</button>
-      </form>
+      <CreateRuleForm categories={categories.map((c) => ({ id: c.id, name: c.name }))} />
 
       {rules.length === 0 ? (
         <p className="empty">No rules yet. Categorize a merchant in the inbox to create one.</p>
@@ -61,10 +35,7 @@ export default async function RulesSettingsPage() {
                 {rule.matchType === 'EXACT' ? 'is' : 'contains'} <strong>{rule.pattern}</strong> →{' '}
                 {rule.categoryName}
               </span>
-              <form action={deleteRuleAction as unknown as (formData: FormData) => void}>
-                <input type="hidden" name="ruleId" value={rule.id} />
-                <button type="submit">Delete</button>
-              </form>
+              <DeleteRuleForm ruleId={rule.id} />
             </li>
           ))}
         </ul>
