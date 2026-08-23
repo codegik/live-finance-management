@@ -4,9 +4,12 @@ Three services in one Railway project, all from this repo:
 
 | Service | What it is | Start command |
 | --- | --- | --- |
-| **web** | the Next.js app | `pnpm start` |
+| **web** | the Next.js app | the image default (`node server.js`) |
 | **Postgres** | Railway's Postgres plugin | — |
-| **reconcile** | the nightly sync, cron-scheduled | `pnpm reconcile` |
+| **reconcile** | the nightly sync, cron-scheduled | `node reconcile-job.mjs` |
+
+Both application services run the **same image**, built from the `Dockerfile`, and differ
+only in the command they run.
 
 ---
 
@@ -32,10 +35,15 @@ working. The nightly reconcile is the backstop either way, so data still arrives
 ## 1. Create the project
 
 1. New Project → Deploy from GitHub repo → this repository.
-2. Railway detects Next.js via Railpack and reads `railway.json` for the rest.
+2. Railway reads `railway.json`, which points it at the `Dockerfile`.
 
-`railway.json` already sets the build command, start command, a `/signin` healthcheck, and
-`preDeployCommand: ["pnpm db:migrate"]` — migrations run before each new container goes
+The image is built here rather than by Railway's own detection, so the build is identical
+on your machine and on the platform — and moving somewhere else later is a config change
+rather than a rewrite. It is a multi-stage build producing a ~215MB image: Next.js
+standalone output, a non-root user, and no test or build tooling.
+
+`railway.json` sets the Dockerfile builder, a `/signin` healthcheck, and
+`preDeployCommand: ["node migrate.mjs"]` — migrations run before each new container goes
 live, in the right order, automatically. (This is the one thing Railway does better than
 Vercel, which has no post-deploy hook at all.)
 
@@ -71,11 +79,11 @@ variables so both services read one definition instead of drifting apart.
 
 Create a **second service** from the same repo:
 
-- Start command: `pnpm reconcile`
+- Start command: `node reconcile-job.mjs`
 - Settings → **Cron Schedule**: `0 6 * * *`
 
 Railway runs a cron service by executing its start command on schedule and expects the
-process to exit. `reconcile-job.ts` does exactly that: it calls `reconcileAll` directly,
+process to exit. The job does exactly that: it calls `reconcileAll` directly,
 prints a summary, and exits 0 when every connection synced or 1 when any failed — so a
 broken card shows as a failed run rather than a green one with bad news in the logs.
 
@@ -115,9 +123,10 @@ immediately on connect; the nightly job keeps them current afterwards.
 
 ## What changed from Vercel
 
-- `vercel.json` is gone; `railway.json` replaces it.
-- `next start` is now a real start command — Railway runs a persistent server rather than
-  serverless functions.
+- `vercel.json` is gone; `railway.json` plus a `Dockerfile` replace it.
+- The app runs as a persistent server rather than serverless functions.
+- `reconcile-job.ts` and `migrate.ts` are compiled to plain ESM at image build time, so
+  neither `tsx` nor `drizzle-kit` — both devDependencies — ship to production.
 - `trustHost: true` is set in `lib/auth/session.ts`. Auth.js only auto-trusts the incoming
   Host header on Vercel; without this every request off-Vercel is rejected as
   `UntrustedHost`.

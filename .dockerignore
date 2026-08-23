@@ -1,0 +1,27 @@
+# Keep the build context small and free of host-specific state.
+node_modules
+.next
+.git
+.github
+
+# Local runtime artefacts from ./start.sh
+.env
+.env.*
+!.env.example
+.dev-server.log
+.dev-server.pid
+
+# Tests and tooling never run in the image.
+tests
+docs
+.claude
+.superpowers
+*.md
+!README.md
+
+# Local scripts
+start.sh
+stop.sh
+test.sh
+seed.sh
+seed.ts

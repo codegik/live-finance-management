@@ -57,6 +57,9 @@ importers:
       drizzle-kit:
         specifier: ^0.30.6
         version: 0.30.6
+      esbuild:
+        specifier: ^0.28.2
+        version: 0.28.2
       msw:
         specifier: ^2.15.0
         version: 2.15.0(@types/node@22.20.1)(typescript@5.9.3)

@@ -1,6 +1,10 @@
 import type { NextConfig } from 'next'
 
 const config: NextConfig = {
+  // Emits a self-contained server with only the files the app actually
+  // imports, which is what the Docker runtime stage copies.
+  output: 'standalone',
+
   experimental: { serverActions: { bodySizeLimit: '1mb' } },
 
   // "Collecting build traces" walks the dependency graph to work out which
