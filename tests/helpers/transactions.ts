@@ -12,14 +12,14 @@ import type { Db } from '@/lib/db/client'
 export async function seedAccount(
   db: Db,
   connectionId: string,
-  over: { pluggyAccountId?: string; name?: string } = {},
+  over: { pluggyAccountId?: string; name?: string; type?: 'CREDIT' | 'BANK' } = {},
 ): Promise<string> {
   const [row] = await db
     .insert(accounts)
     .values({
       connectionId,
       pluggyAccountId: over.pluggyAccountId ?? `acc-${crypto.randomUUID()}`,
-      type: 'CREDIT',
+      type: over.type ?? 'CREDIT',
       name: over.name ?? 'Card',
       last4: '9999',
     })

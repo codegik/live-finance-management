@@ -450,6 +450,40 @@ it('sends one alert message per reconcile even when the household has two connec
   expect(alertsEvaluate.evaluateAndNotify).toHaveBeenCalledTimes(1)
 })
 
+it('still alerts the household when a sibling connection fails', async () => {
+  // Distinct from 'keeps reconciling connections that come after a failed
+  // one': that test proves the sync loop does not stop, but seeds no budget
+  // crossing and asserts no mail. This proves the household-wide alert pass
+  // still runs -- and still notifies -- when one of its own connections is
+  // the one that failed, which is exactly the shape a second card adds.
+  const now = new Date()
+  const { db, householdId, userId, connectionId } = await seed()
+  await db.insert(connections).values({
+    householdId,
+    ownerUserId: userId,
+    pluggyItemId: 'item-broken',
+    institution: 'Broken Bank',
+    status: 'UPDATED',
+  })
+  await seedCrossing(db, householdId, connectionId, now)
+  const { mailer, sent } = createRecordingMailer()
+
+  const { http, HttpResponse } = await import('msw')
+  server.use(
+    http.get('https://api.pluggy.test/items/item-broken', () =>
+      HttpResponse.json({ error: 'boom' }, { status: 500 }),
+    ),
+  )
+
+  const result = await reconcileAll(db, pluggy(), { mailer, now })
+
+  expect(result.failed).toHaveLength(1)
+  expect(result.succeeded).toHaveLength(1)
+  expect(await listTransactions(db, householdId)).not.toHaveLength(0)
+  expect(sent).toHaveLength(1)
+  expect(sent[0].subject).toContain('Supermercado')
+})
+
 it('reports a reconcile as succeeded even when the alert mail fails', async () => {
   // A Resend outage must not turn a healthy reconcile into a failed run, or
   // the exit code Railway records stops meaning "a card is broken".
