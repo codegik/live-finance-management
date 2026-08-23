@@ -180,6 +180,39 @@ export const budgets = pgTable(
 
 export type Budget = typeof budgets.$inferSelect
 
+/**
+ * One row per threshold already notified, per category, per month. Its only
+ * purpose is dedupe: written after a successful send, deleted when the
+ * crossing stops being true. See lib/domain/alerts.ts for the rule.
+ *
+ * Deliberately stores no copy of the spend or budget that caused it. Every
+ * decision is recomputed from the live rows, so a snapshot here could only
+ * ever be a second version of the truth that disagrees with the first.
+ */
+export const alertStates = pgTable(
+  'alert_state',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    householdId: uuid('household_id')
+      .notNull()
+      .references(() => households.id, { onDelete: 'cascade' }),
+    categoryId: uuid('category_id')
+      .notNull()
+      .references(() => categories.id, { onDelete: 'cascade' }),
+    /** Always the first of the month, as in `budget`. */
+    periodMonth: date('period_month').notNull(),
+    /** A percent -- 80 or 100. An integer rather than an enum so a future
+     * 50% costs no migration. */
+    threshold: integer('threshold').notNull(),
+    firedAt: timestamp('fired_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('alert_state_unique').on(t.householdId, t.categoryId, t.periodMonth, t.threshold),
+  ],
+)
+
+export type AlertState = typeof alertStates.$inferSelect
+
 export const transactions = pgTable(
   'transaction',
   {
