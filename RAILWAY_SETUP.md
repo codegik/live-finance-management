@@ -70,6 +70,8 @@ mystery at 3am.
 | `PLUGGY_API_URL` | `https://api.pluggy.ai` |
 | `PLUGGY_WEBHOOK_TOKEN` | `openssl rand -base64 32` |
 | `CRON_SECRET` | `openssl rand -base64 32` |
+| `RESEND_API_KEY` | From https://resend.com |
+| `ALERT_EMAIL_FROM` | An address on your verified Resend domain |
 
 **The reconcile service needs the same full set**, even though it only uses the database and
 the Pluggy credentials — `loadEnv()` validates everything or nothing. Use Railway's shared

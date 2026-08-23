@@ -26,6 +26,8 @@ export function useTestEnv(): void {
   vi.stubEnv('PLUGGY_CLIENT_SECRET', 'client-secret')
   vi.stubEnv('PLUGGY_WEBHOOK_TOKEN', 'webhook-token-value-1234')
   vi.stubEnv('CRON_SECRET', 'cron-secret-value-1234')
+  vi.stubEnv('RESEND_API_KEY', 're_test_key')
+  vi.stubEnv('ALERT_EMAIL_FROM', 'alerts@example.com')
 }
 
 // useTestEnv() stubs process.env for the duration of a test. All test files
