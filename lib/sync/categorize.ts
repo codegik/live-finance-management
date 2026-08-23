@@ -1,6 +1,7 @@
-import { and, eq, inArray, isNull, like, ne, or, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNull, like, ne, or } from 'drizzle-orm'
 import type { Executor } from '@/lib/db/client'
-import { accounts, categories, connections, merchantRules, transactions } from '@/lib/db/schema'
+import { householdTransactionIds } from '@/lib/db/transactions'
+import { categories, merchantRules, transactions } from '@/lib/db/schema'
 import { normalizeMerchant, resolveCategory } from '@/lib/domain/categorize'
 
 export type RecategorizeScope =
@@ -14,7 +15,8 @@ function escapeLike(value: string): string {
 }
 
 /**
- * The only code in the system that writes a category.
+ * The only code that computes a category from merchant, rule and Pluggy
+ * inputs.
  *
  * Three callers — the sync (by transaction id), rule create and delete (by
  * what the rule matches), and the nightly reconcile (household-wide). One
@@ -59,7 +61,7 @@ export async function recategorize(
     .where(eq(merchantRules.householdId, scope.householdId))
 
   const filters = [
-    eq(connections.householdId, scope.householdId),
+    inArray(transactions.id, householdTransactionIds(exec, scope.householdId)),
     or(isNull(transactions.categorySource), ne(transactions.categorySource, 'MANUAL'))!,
   ]
 
@@ -87,8 +89,6 @@ export async function recategorize(
       categorySource: transactions.categorySource,
     })
     .from(transactions)
-    .innerJoin(accounts, eq(transactions.accountId, accounts.id))
-    .innerJoin(connections, eq(accounts.connectionId, connections.id))
     .where(and(...filters))
 
   let changed = 0

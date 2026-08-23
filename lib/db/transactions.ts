@@ -58,7 +58,7 @@ export async function listTransactions(
 }
 
 /** Transaction ids belonging to a household, as a subquery for scoped writes. */
-function householdTransactionIds(exec: Executor, householdId: string) {
+export function householdTransactionIds(exec: Executor, householdId: string) {
   return exec
     .select({ id: transactions.id })
     .from(transactions)
