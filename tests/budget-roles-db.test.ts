@@ -82,6 +82,28 @@ it('moves a row back to spending when its category stops being an exclusion', as
   expect(await roleOf(db, householdId, id)).toBe('SPEND')
 })
 
+it('is idempotent, and moves a row back to spending when its category stops being a transfer', async () => {
+  const { db, householdId, accountId } = await seedHousehold()
+  const id = await insertTransaction(db, accountId, {
+    description: 'AJUSTE',
+    pluggyCategory: 'Transfers',
+  })
+  expect((await refreshBudgetRoles(db, householdId)).changed).toBe(1)
+  expect(await roleOf(db, householdId, id)).toBe('TRANSFER')
+  // A second consecutive call has nothing left to change: every row's role
+  // already matches its category, so the returned count stays honest.
+  expect((await refreshBudgetRoles(db, householdId)).changed).toBe(0)
+
+  await db
+    .update(transactions)
+    .set({ pluggyCategory: 'Groceries' })
+    .where(eq(transactions.id, id))
+  const { changed } = await refreshBudgetRoles(db, householdId)
+
+  expect(changed).toBe(1)
+  expect(await roleOf(db, householdId, id)).toBe('SPEND')
+})
+
 it('re-roles a hand-categorized row too, which recategorize could never do', async () => {
   const { db, householdId, accountId } = await seedHousehold()
   const id = await insertTransaction(db, accountId, {

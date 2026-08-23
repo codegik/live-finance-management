@@ -91,8 +91,8 @@ export const PLUGGY_CATEGORY_TO_SEED_KEY: Record<string, string> = {
  *
  *   'Transfers', 'Credit card payment'  -- money moving between the
  *     household's own accounts. The card invoice paid from checking is the
- *     same money as the card transactions it settles; Slice 6 flags these
- *     `is_transfer` so they never double-count against a budget.
+ *     same money as the card transactions it settles; Slice 6 gives these rows
+ *     `budget_role = 'TRANSFER'` so they never double-count against a budget.
  *   'Tax on financial operations', 'Credit card fees' -- bank charges, not
  *     a household budget line.
  *
