@@ -31,6 +31,11 @@ export function attachHouseholdToSession({
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  // Auth.js only trusts the incoming Host header automatically on Vercel,
+  // which it detects by env var. Anywhere else — Railway included — every
+  // request is rejected as UntrustedHost until this is set. The platform
+  // terminates TLS and sets the header itself, so trusting it is correct here.
+  trustHost: true,
   session: { strategy: 'jwt' },
   pages: { signIn: '/signin' },
   providers: [

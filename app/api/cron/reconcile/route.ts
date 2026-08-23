@@ -5,8 +5,9 @@ import { loadEnv } from '@/lib/env'
 import { createPluggyClient } from '@/lib/pluggy/client'
 import { reconcileAll } from '@/lib/sync/reconcile'
 
-export const maxDuration = 300
-
+// Kept for triggering a reconcile by hand. The scheduled run is a separate
+// one-shot process (reconcile-job.ts) that calls reconcileAll directly, so
+// this path carries no timeout budget of its own.
 function authorizationMatches(provided: string | null, expected: string): boolean {
   if (!provided) return false
   const a = Buffer.from(provided)
