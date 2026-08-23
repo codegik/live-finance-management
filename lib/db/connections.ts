@@ -46,9 +46,16 @@ export type ConnectionAccount = {
   type: 'CREDIT' | 'BANK'
   name: string
   last4: string | null
+  // Resolved: coalesce(household override, Pluggy's own value).
   dueDay: number | null
   closingDay: number | null
-  overridden: boolean
+  // Pluggy's own value, unresolved -- the UI shows this alongside the
+  // resolved value so a household can see what the bank reports even after
+  // overriding it.
+  pluggyDueDay: number | null
+  pluggyClosingDay: number | null
+  dueDayOverridden: boolean
+  closingDayOverridden: boolean
 }
 
 export type ConnectionDetail = {
@@ -98,7 +105,10 @@ export async function listConnectionDetails(
         last4: account.last4,
         dueDay: account.dueDayOverride ?? account.dueDay,
         closingDay: account.closingDayOverride ?? account.closingDay,
-        overridden: account.dueDayOverride != null || account.closingDayOverride != null,
+        pluggyDueDay: account.dueDay,
+        pluggyClosingDay: account.closingDay,
+        dueDayOverridden: account.dueDayOverride != null,
+        closingDayOverridden: account.closingDayOverride != null,
       })),
   }))
 }

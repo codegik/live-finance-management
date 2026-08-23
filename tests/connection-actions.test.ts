@@ -178,4 +178,7 @@ it('refuses to set days on another household account', async () => {
   const state = await saveAccountDaysAction(EMPTY, form({ accountId, dueDay: '15', closingDay: '' }))
 
   expect(state.error).toBe(UNKNOWN_ACCOUNT_ERROR)
+  const [row] = await db.select().from(accounts).where(eq(accounts.id, accountId))
+  expect(row.dueDayOverride).toBeNull()
+  expect(row.closingDayOverride).toBeNull()
 })

@@ -76,6 +76,10 @@ export default async function ConnectionsSettingsPage({
                           accountId={account.id}
                           dueDay={account.dueDay}
                           closingDay={account.closingDay}
+                          pluggyDueDay={account.pluggyDueDay}
+                          pluggyClosingDay={account.pluggyClosingDay}
+                          dueDayOverridden={account.dueDayOverridden}
+                          closingDayOverridden={account.closingDayOverridden}
                         />
                       ) : null}
                     </li>

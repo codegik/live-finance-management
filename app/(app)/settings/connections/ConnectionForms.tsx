@@ -41,14 +41,27 @@ export function RemoveConnectionForm({
   )
 }
 
+// Pluggy writes due_day / closing_day fresh on every sync, so the resolved
+// value the inputs default to can silently be the household's own override
+// rather than what the bank reports. The line beneath the inputs always
+// shows Pluggy's own value, and an "override" tag marks a field the
+// household has replaced, so neither fact is ever hidden.
 export function AccountDaysForm({
   accountId,
   dueDay,
   closingDay,
+  pluggyDueDay,
+  pluggyClosingDay,
+  dueDayOverridden,
+  closingDayOverridden,
 }: {
   accountId: string
   dueDay: number | null
   closingDay: number | null
+  pluggyDueDay: number | null
+  pluggyClosingDay: number | null
+  dueDayOverridden: boolean
+  closingDayOverridden: boolean
 }) {
   const [state, formAction, pending] = useActionState(saveAccountDaysAction, INITIAL)
 
@@ -56,13 +69,16 @@ export function AccountDaysForm({
     <form action={formAction} className="settings__inline">
       <input type="hidden" name="accountId" value={accountId} />
       <label>
-        Due day
+        Due day {dueDayOverridden ? <span className="badge">override</span> : null}
         <input name="dueDay" type="number" min={1} max={31} defaultValue={dueDay ?? ''} />
       </label>
       <label>
-        Closing day
+        Closing day {closingDayOverridden ? <span className="badge">override</span> : null}
         <input name="closingDay" type="number" min={1} max={31} defaultValue={closingDay ?? ''} />
       </label>
+      <p className="settings__meta">
+        pluggy reports due day {pluggyDueDay ?? 'none'}, closing day {pluggyClosingDay ?? 'none'}
+      </p>
       {state.error ? (
         <p role="alert" className="form__error">
           {state.error}
