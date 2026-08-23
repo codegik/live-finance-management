@@ -101,3 +101,20 @@ it('returns an empty ledger rather than throwing for a household with no connect
   expect(view.days).toEqual([])
   expect(view.health.allFresh).toBe(true)
 })
+
+it("carries each transaction's category and the uncategorized count", async () => {
+  const { db, householdId } = await seedSynced()
+
+  const view = await getLedgerView(db, householdId)
+
+  const zaffari = view.days
+    .flatMap((d) => d.items)
+    .find((i) => i.description === 'ZAFFARI PORTO ALEG *0421')!
+  expect(zaffari.categoryName).toBe('Supermercado')
+
+  // The bank fee's Pluggy category ('Fees') is deliberately unmapped, so it
+  // is the one transaction still waiting in the inbox.
+  const fee = view.days.flatMap((d) => d.items).find((i) => i.description === 'TARIFA MANUTENCAO CONTA')!
+  expect(fee.categoryName).toBeNull()
+  expect(view.uncategorizedCount).toBeGreaterThan(0)
+})

@@ -1,7 +1,7 @@
 import { and, desc, eq, gte, inArray, isNull, lte } from 'drizzle-orm'
 import { categoryBelongsToHousehold } from './categories'
 import type { Db, Executor } from './client'
-import { accounts, connections, transactions } from './schema'
+import { accounts, categories, connections, transactions } from './schema'
 
 export type TransactionRow = {
   id: string
@@ -14,6 +14,7 @@ export type TransactionRow = {
   pluggyCategory: string | null
   categoryId: string | null
   categorySource: 'PLUGGY' | 'RULE' | 'MANUAL' | null
+  categoryName: string | null
   accountName: string
   accountLast4: string | null
   institution: string
@@ -30,17 +31,20 @@ export async function listTransactions(
   if (opts.to) filters.push(lte(transactions.date, opts.to))
 
   const rows = await db
-    .select({ transaction: transactions, account: accounts, connection: connections })
+    .select({ transaction: transactions, account: accounts, connection: connections, category: categories })
     .from(transactions)
     .innerJoin(accounts, eq(transactions.accountId, accounts.id))
     .innerJoin(connections, eq(accounts.connectionId, connections.id))
+    // Left, not inner: an uncategorized transaction must still appear here --
+    // that is the entire point of the badge that links to the inbox.
+    .leftJoin(categories, eq(transactions.categoryId, categories.id))
     .where(and(...filters))
     // createdAt alone doesn't break ties deterministically: every row from a
     // single sync gets a near-identical defaultNow() timestamp, so same-day
     // rows could reorder between calls. id is a stable, unique tiebreaker.
     .orderBy(desc(transactions.date), desc(transactions.createdAt), desc(transactions.id))
 
-  return rows.map(({ transaction, account, connection }) => ({
+  return rows.map(({ transaction, account, connection, category }) => ({
     id: transaction.id,
     pluggyTransactionId: transaction.pluggyTransactionId,
     date: transaction.date,
@@ -51,6 +55,7 @@ export async function listTransactions(
     pluggyCategory: transaction.pluggyCategory,
     categoryId: transaction.categoryId,
     categorySource: transaction.categorySource,
+    categoryName: category?.name ?? null,
     accountName: account.name,
     accountLast4: account.last4,
     institution: connection.institution,

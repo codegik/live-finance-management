@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { ConnectCardButton } from '@/components/ConnectCardButton'
 import { StaleBanner } from '@/components/StaleBanner'
 import { TransactionList } from '@/components/TransactionList'
@@ -20,6 +21,11 @@ export default async function LedgerPage() {
     <main className="page">
       <header className="page__header">
         <h1>Ledger</h1>
+        {view.uncategorizedCount > 0 ? (
+          <Link href="/inbox" className="badge">
+            {view.uncategorizedCount} to categorize
+          </Link>
+        ) : null}
         <ConnectCardButton />
       </header>
       <StaleBanner health={view.health} />

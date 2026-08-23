@@ -2,13 +2,14 @@ import { beforeEach, expect, it } from 'vitest'
 import { GET } from '@/app/api/cron/reconcile/route'
 import { hashPassword } from '@/lib/auth/password'
 import { createHousehold } from '@/lib/db/households'
-import { connections } from '@/lib/db/schema'
+import { connections, transactions } from '@/lib/db/schema'
 import { listTransactions } from '@/lib/db/transactions'
 import { createPluggyClient } from '@/lib/pluggy/client'
 import { attachConnection } from '@/lib/sync/connect'
 import { reconcileAll } from '@/lib/sync/reconcile'
 import { resetDb, testDb, useTestEnv } from './helpers/db'
 import { startPluggyServer } from './helpers/pluggy-server'
+import { insertTransaction, seedAccount } from './helpers/transactions'
 
 const server = startPluggyServer()
 
@@ -31,12 +32,12 @@ async function seed() {
     name: 'Klassmann',
     owner: { email: 'inacio@example.com', name: 'Inacio', passwordHash: await hashPassword('pw') },
   })
-  await attachConnection(db, pluggy(), {
+  const { connectionId } = await attachConnection(db, pluggy(), {
     householdId,
     ownerUserId: userId,
     itemId: 'item-nubank-1',
   })
-  return { db, householdId, userId }
+  return { db, householdId, userId, connectionId }
 }
 
 function cronRequest(authorization: string | null) {
@@ -198,4 +199,32 @@ it('reports 500 through the route when every connection fails', async () => {
   expect(response.status).toBe(500)
   expect(body.succeeded).toHaveLength(0)
   expect(body.failed).toHaveLength(1)
+})
+
+it('recategorizes every household after the nightly sync', async () => {
+  const { db, householdId, connectionId } = await seed()
+  // Every fixture transaction is touched -- and so already recategorized --
+  // by its own connection's sync, so a genuinely stale row (the kind an
+  // interrupted deploy or a normalizer change would leave behind) has to
+  // live somewhere that sync doesn't look: an account Pluggy's mock knows
+  // nothing about, standing in for one that has since closed.
+  const accountId = await seedAccount(db, connectionId)
+  const staleId = await insertTransaction(db, accountId, {
+    description: 'ZAFFARI PORTO ALEG *0421',
+    pluggyCategory: 'Supermarkets',
+  })
+  // A row written before any categorization existed: categoryId/source
+  // null, exactly what an interrupted deploy or a normalizer change would
+  // leave behind.
+  await db
+    .update(transactions)
+    .set({ categoryId: null, categorySource: null, merchantNormalized: null })
+
+  const result = await reconcileAll(db, pluggy())
+
+  expect(result.failed).toEqual([])
+  expect(result.recategorized).toBeGreaterThan(0)
+  const rows = await listTransactions(db, householdId)
+  expect(rows.find((r) => r.pluggyTransactionId === 'tx-1')!.categoryId).not.toBeNull()
+  expect(rows.find((r) => r.id === staleId)!.categoryId).not.toBeNull()
 })
