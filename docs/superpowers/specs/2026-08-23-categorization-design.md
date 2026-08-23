@@ -92,8 +92,16 @@ One migration. Two new tables, three new columns on `transaction`.
   (`PLUGGY` | `RULE` | `MANUAL`, nullable).
 
 Indexes: `category_id` on `transaction` — Slice 3's aggregation depends on it —
-and `(household_id, merchant_normalized)` reachable for the inbox grouping and
-the per-merchant backfill.
+and `merchant_normalized` on `transaction` for the inbox grouping and the
+per-merchant backfill.
+
+> **Amended.** This sentence originally asked for a composite index on
+> `(household_id, merchant_normalized)`. That is unsatisfiable: `transaction`
+> has no `household_id` column — household is reached through
+> `account → connection` — so no such index can be created. The single-column
+> `transaction_merchant_idx` in the implementation is the correct reading, and
+> household scoping is applied by the join, not by the index. Do not "fix"
+> this into a composite index; it would produce a broken migration.
 
 ### Three departures from the parent spec
 
@@ -234,6 +242,14 @@ to reimplement to be correct.
 **`/ledger`** — each transaction gains a category chip, and the header gains
 an uncategorized-count badge linking to the inbox. This is the only change to
 an existing screen.
+
+**Deferred to Slice 3: per-transaction correction.** There is no UI in this
+slice for changing the category of a transaction that was already categorized
+— the inbox only surfaces rows with `category_id IS NULL`, so the only remedy
+for a *wrong* category is a merchant rule, which is the wrong granularity for
+a one-off charge. `setTransactionCategory` in `lib/db/transactions.ts` is the
+seam this will land on; it is exercised by tests today and has no production
+caller.
 
 ## Seeded taxonomy
 

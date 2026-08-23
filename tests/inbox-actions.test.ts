@@ -20,9 +20,8 @@ vi.mock('@/lib/auth/session', () => ({
 vi.mock('next/cache', () => ({ revalidatePath: () => {} }))
 
 const { assignGroupAction } = await import('@/app/(app)/inbox/actions')
-const { ASSIGNED_MESSAGE, EMPTY_PATTERN_ERROR, MISSING_FIELD_ERROR } = await import(
-  '@/app/(app)/inbox/state'
-)
+const { ASSIGNED_MESSAGE, DUPLICATE_RULE_ERROR, EMPTY_PATTERN_ERROR, MISSING_FIELD_ERROR } =
+  await import('@/app/(app)/inbox/state')
 
 beforeEach(async () => {
   useTestEnv()
@@ -150,4 +149,41 @@ it('reports an empty pattern rather than throwing, and leaves the group untouche
   expect(await listRules(db, householdId)).toEqual([])
   const rows = await listTransactions(db, householdId)
   expect(rows[0].categoryId).toBeNull()
+})
+
+it('reports a duplicate rule as a friendly error instead of a 500', async () => {
+  // /inbox renders one independent form per merchant group, and the design's
+  // headline workflow is shortening two branch groups to the same CONTAINS
+  // pattern. Submitting the second before the revalidated payload lands hits
+  // merchant_rule_unique, which postgres raises as 23505.
+  const { db, householdId, accountId } = await seedHousehold()
+  await insertTransaction(db, accountId, { description: 'ZAFFARI PORTO ALEG *0421' })
+  await insertTransaction(db, accountId, { description: 'ZAFFARI CENTRO' })
+  const [supermarket] = await listCategories(db, householdId)
+
+  const first = await assignGroupAction(
+    { error: null, message: null },
+    form({
+      merchant: 'ZAFFARI PORTO ALEG',
+      categoryId: supermarket.id,
+      createRule: 'on',
+      pattern: 'ZAFFARI',
+      matchType: 'CONTAINS',
+    }),
+  )
+  expect(first.error).toBeNull()
+
+  const second = await assignGroupAction(
+    { error: null, message: null },
+    form({
+      merchant: 'ZAFFARI CENTRO',
+      categoryId: supermarket.id,
+      createRule: 'on',
+      pattern: 'ZAFFARI',
+      matchType: 'CONTAINS',
+    }),
+  )
+
+  expect(second.error).toBe(DUPLICATE_RULE_ERROR)
+  expect(await listRules(db, householdId)).toHaveLength(1)
 })

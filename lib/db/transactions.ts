@@ -73,7 +73,15 @@ export function householdTransactionIds(exec: Executor, householdId: string) {
     .where(eq(connections.householdId, householdId))
 }
 
-/** A hand-set category. MANUAL is what protects it from every later sync. */
+/**
+ * A hand-set category. MANUAL is what protects it from every later sync.
+ *
+ * Deferred seam: per-transaction correction lands in Slice 3. Today the inbox
+ * only surfaces category_id IS NULL rows, so nothing in production calls this
+ * — a wrongly categorized transaction can currently only be fixed with a
+ * merchant rule, which is the wrong granularity for a one-off. Exercised by
+ * tests so the seam stays correct until the UI arrives.
+ */
 export async function setTransactionCategory(
   exec: Executor,
   householdId: string,

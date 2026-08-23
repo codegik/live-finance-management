@@ -7,6 +7,7 @@ import { createRule } from '@/lib/db/rules'
 import { setCategoryForMerchant } from '@/lib/db/transactions'
 import {
   ASSIGNED_MESSAGE,
+  DUPLICATE_RULE_ERROR,
   EMPTY_PATTERN_ERROR,
   MISSING_FIELD_ERROR,
   type AssignState,
@@ -54,6 +55,19 @@ export async function assignGroupAction(
       }
       if (error instanceof Error && error.message === 'UNKNOWN_CATEGORY') {
         return { error: UNKNOWN_CATEGORY_ERROR, message: null }
+      }
+      // Two merchant groups edited down to the same pattern -- 'ZAFFARI
+      // PORTO ALEG' and 'ZAFFARI CENTRO' both shortened to CONTAINS ZAFFARI
+      // -- collide on merchant_rule_unique. postgres.js surfaces that as a
+      // PostgresError carrying a Postgres error code, not a distinguishable
+      // message; narrow on the code, which is stable, not on message text,
+      // which is not.
+      if (
+        error instanceof Error &&
+        'code' in error &&
+        (error as { code?: string }).code === '23505'
+      ) {
+        return { error: DUPLICATE_RULE_ERROR, message: null }
       }
       throw error
     }
