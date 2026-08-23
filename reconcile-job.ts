@@ -14,6 +14,7 @@
 // green one with bad news buried in the logs.
 
 import { createDb } from './lib/db/client'
+import { createMailer } from './lib/email/resend'
 import { loadEnv } from './lib/env'
 import { createPluggyClient } from './lib/pluggy/client'
 import { reconcileAll } from './lib/sync/reconcile'
@@ -28,11 +29,15 @@ try {
     clientSecret: env.PLUGGY_CLIENT_SECRET,
   })
 
-  const { succeeded, failed, recategorized, transfersFlagged } = await reconcileAll(db, pluggy)
-  // recategorized belongs in the log: it is the only observable signal that a
-  // normalizer or Pluggy-mapping change actually landed on real rows.
+  const mailer = createMailer({ apiKey: env.RESEND_API_KEY, from: env.ALERT_EMAIL_FROM })
+
+  const { succeeded, failed, recategorized, transfersFlagged, alerted } = await reconcileAll(
+    db,
+    pluggy,
+    { mailer },
+  )
   console.log(
-    `reconcile finished: ${succeeded.length} succeeded, ${failed.length} failed, ${recategorized} recategorized, ${transfersFlagged} transfers flagged`,
+    `reconcile finished: ${succeeded.length} succeeded, ${failed.length} failed, ${recategorized} recategorized, ${transfersFlagged} transfers flagged, ${alerted} alerts sent`,
   )
 
   if (failed.length > 0) {

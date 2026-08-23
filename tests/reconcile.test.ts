@@ -1,17 +1,20 @@
-import { sql as raw } from 'drizzle-orm'
+import { eq, sql as raw } from 'drizzle-orm'
 import { beforeEach, expect, it } from 'vitest'
 import { GET } from '@/app/api/cron/reconcile/route'
 import { hashPassword } from '@/lib/auth/password'
+import { setBudget } from '@/lib/db/budgets'
 import { listCategories } from '@/lib/db/categories'
 import { createHousehold } from '@/lib/db/households'
 import { connections, transactions } from '@/lib/db/schema'
 import { listTransactions } from '@/lib/db/transactions'
+import { saoPauloPeriod, saoPauloToday } from '@/lib/domain/dates'
 import { SEED_CATEGORIES } from '@/lib/domain/seed-categories'
 import { createPluggyClient } from '@/lib/pluggy/client'
 import { attachConnection } from '@/lib/sync/connect'
 import { reconcileAll } from '@/lib/sync/reconcile'
 import { getInboxView } from '@/lib/views/inbox'
 import { resetDb, testDb, useTestEnv } from './helpers/db'
+import { createRecordingMailer } from './helpers/mailer'
 import { startPluggyServer } from './helpers/pluggy-server'
 import { insertTransaction, seedAccount } from './helpers/transactions'
 
@@ -28,6 +31,11 @@ function pluggy() {
     clientId: 'client-id',
     clientSecret: 'client-secret',
   })
+}
+
+/** For the cases that are not about alerts and simply must compile. */
+function noopMailer() {
+  return createRecordingMailer().mailer
 }
 
 async function seed() {
@@ -54,7 +62,7 @@ function cronRequest(authorization: string | null) {
 it('syncs every connection and records when it last succeeded', async () => {
   const { db, householdId } = await seed()
 
-  const result = await reconcileAll(db, pluggy())
+  const result = await reconcileAll(db, pluggy(), { mailer: noopMailer() })
 
   expect(result.failed).toHaveLength(0)
   expect(result.succeeded).toHaveLength(1)
@@ -95,7 +103,7 @@ it('keeps reconciling connections that come after a failed one', async () => {
     ),
   )
 
-  const result = await reconcileAll(db, pluggy())
+  const result = await reconcileAll(db, pluggy(), { mailer: noopMailer() })
 
   expect(result.failed).toHaveLength(1)
   expect(result.succeeded).toHaveLength(1)
@@ -104,7 +112,7 @@ it('keeps reconciling connections that come after a failed one', async () => {
 
 it('leaves existing data in place when a connection fails', async () => {
   const { db, householdId } = await seed()
-  await reconcileAll(db, pluggy())
+  await reconcileAll(db, pluggy(), { mailer: noopMailer() })
   const before = await listTransactions(db, householdId)
 
   const { http, HttpResponse } = await import('msw')
@@ -113,7 +121,7 @@ it('leaves existing data in place when a connection fails', async () => {
       HttpResponse.json({ error: 'boom' }, { status: 500 }),
     ),
   )
-  await reconcileAll(db, pluggy())
+  await reconcileAll(db, pluggy(), { mailer: noopMailer() })
 
   expect(await listTransactions(db, householdId)).toHaveLength(before.length)
 })
@@ -233,7 +241,7 @@ it('recategorizes and re-flags transfers for every household after the nightly s
     .update(transactions)
     .set({ categoryId: null, categorySource: null, merchantNormalized: null })
 
-  const result = await reconcileAll(db, pluggy())
+  const result = await reconcileAll(db, pluggy(), { mailer: noopMailer() })
 
   expect(result.failed).toEqual([])
   expect(result.recategorized).toBeGreaterThan(0)
@@ -305,7 +313,7 @@ it('seeds the taxonomy for a household that predates the migration', async () =>
   const { db, householdId } = await seedPreMigrationHousehold()
   expect(await listCategories(db, householdId)).toEqual([])
 
-  await reconcileAll(db, pluggy())
+  await reconcileAll(db, pluggy(), { mailer: noopMailer() })
 
   const seeded = await listCategories(db, householdId)
   expect(seeded.map((c) => c.seedKey)).toEqual(SEED_CATEGORIES.map((c) => c.seedKey))
@@ -314,7 +322,7 @@ it('seeds the taxonomy for a household that predates the migration', async () =>
 it('backfills merchant_normalized and categories on pre-migration transactions', async () => {
   const { db, householdId } = await seedPreMigrationHousehold()
 
-  const result = await reconcileAll(db, pluggy())
+  const result = await reconcileAll(db, pluggy(), { mailer: noopMailer() })
 
   expect(result.failed).toEqual([])
   expect(result.recategorized).toBeGreaterThan(0)
@@ -351,10 +359,83 @@ it('leaves no giant null-merchant inbox group after reconciling a pre-migration 
   // And with no categories seeded there is nothing to assign them to.
   expect(before.categories).toEqual([])
 
-  await reconcileAll(db, pluggy())
+  await reconcileAll(db, pluggy(), { mailer: noopMailer() })
 
   const after = await getInboxView(db, householdId)
   expect(after.groups.every((g) => g.merchant !== null)).toBe(true)
   expect(after.totalCount).toBe(1)
   expect(after.categories).not.toHaveLength(0)
+})
+
+/**
+ * A category with spend in the current month and a budget it has crossed.
+ *
+ * The Pluggy fixture is dated whenever it is dated, and reconcileAll here
+ * runs against the real clock, so the row that must cross is seeded into
+ * today's month explicitly. MANUAL protects it from the recategorize pass
+ * that runs before the evaluation.
+ */
+async function seedCrossing(
+  db: ReturnType<typeof testDb>,
+  householdId: string,
+  connectionId: string,
+  now: Date,
+): Promise<void> {
+  const accountId = await seedAccount(db, connectionId, { pluggyAccountId: 'acc-alerts-1' })
+  const supermarket = (await listCategories(db, householdId)).find(
+    (c) => c.name === 'Supermercado',
+  )!
+  const txId = await insertTransaction(db, accountId, {
+    description: 'ZAFFARI',
+    amountCents: 90_000,
+    date: saoPauloToday(now),
+  })
+  await db
+    .update(transactions)
+    .set({ categoryId: supermarket.id, categorySource: 'MANUAL' })
+    .where(eq(transactions.id, txId))
+  await setBudget(db, householdId, {
+    categoryId: supermarket.id,
+    period: saoPauloPeriod(now),
+    amountCents: 100_000,
+  })
+}
+
+it('sends one alert message per reconcile even when the household has two connections', async () => {
+  // Evaluation is per household, not per connection. Moved into
+  // syncConnection this would mail twice for one crossing -- the failure that
+  // only appears once the second card is connected, which is exactly when
+  // nobody is looking for it.
+  const now = new Date()
+  const { db, householdId, userId, connectionId } = await seed()
+  await db.insert(connections).values({
+    householdId,
+    ownerUserId: userId,
+    pluggyItemId: 'item-second-1',
+    institution: 'Itau',
+    status: 'UPDATED',
+  })
+  await seedCrossing(db, householdId, connectionId, now)
+  const { mailer, sent } = createRecordingMailer()
+
+  await reconcileAll(db, pluggy(), { mailer, now })
+
+  expect(sent).toHaveLength(1)
+  expect(sent[0].subject).toContain('Supermercado')
+})
+
+it('reports a reconcile as succeeded even when the alert mail fails', async () => {
+  // A Resend outage must not turn a healthy reconcile into a failed run, or
+  // the exit code Railway records stops meaning "a card is broken".
+  const now = new Date()
+  const { db, householdId, connectionId } = await seed()
+  await seedCrossing(db, householdId, connectionId, now)
+  const { mailer, failNext } = createRecordingMailer()
+  failNext()
+
+  const result = await reconcileAll(db, pluggy(), { mailer, now })
+
+  expect(result.failed).toEqual([])
+  expect(result.succeeded).toHaveLength(1)
+  expect(result.alerted).toBe(0)
 })

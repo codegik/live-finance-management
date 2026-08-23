@@ -1,7 +1,9 @@
+import { evaluateAndNotify } from '@/lib/alerts/evaluate'
 import { seedCategories } from '@/lib/db/categories'
 import { seedDefaultRules } from '@/lib/db/rules'
 import type { Db } from '@/lib/db/client'
 import { connections } from '@/lib/db/schema'
+import type { Mailer } from '@/lib/email/resend'
 import type { PluggyClient } from '@/lib/pluggy/client'
 import { recategorize } from './categorize'
 import { refreshTransferFlags } from './transfers'
@@ -10,12 +12,13 @@ import { syncConnection } from './transactions'
 export async function reconcileAll(
   db: Db,
   pluggy: PluggyClient,
-  opts: { now?: Date } = {},
+  deps: { mailer: Mailer; now?: Date },
 ): Promise<{
   succeeded: string[]
   failed: string[]
   recategorized: number
   transfersFlagged: number
+  alerted: number
 }> {
   const all = await db
     .select({ id: connections.id })
@@ -27,7 +30,7 @@ export async function reconcileAll(
 
   for (const connection of all) {
     try {
-      await syncConnection(db, pluggy, connection.id, { now: opts.now })
+      await syncConnection(db, pluggy, connection.id, { now: deps.now })
       succeeded.push(connection.id)
     } catch (error) {
       console.error('reconcile failed', { connectionId: connection.id, error })
@@ -45,6 +48,7 @@ export async function reconcileAll(
 
   let recategorized = 0
   let transfersFlagged = 0
+  let alerted = 0
   for (const { householdId } of households) {
     try {
       // Seed FIRST, recategorize SECOND, and the order is load-bearing.
@@ -82,7 +86,22 @@ export async function reconcileAll(
       // seed one household must not stop the others being recategorized.
       console.error('recategorize failed', { householdId, error })
     }
+
+    // AFTER recategorize, and the order is load-bearing here in a way the
+    // pair above is not: recategorize moves spend between categories, so
+    // evaluating first would mail about a category the very next pass
+    // corrects.
+    //
+    // Its own try/catch rather than the outer one, so a mail failure is
+    // not logged as 'recategorize failed' and does not discard the counts
+    // the passes above just produced.
+    try {
+      const { fired } = await evaluateAndNotify(db, deps.mailer, householdId, { now: deps.now })
+      alerted += fired
+    } catch (error) {
+      console.error('alerts failed', { householdId, error })
+    }
   }
 
-  return { succeeded, failed, recategorized, transfersFlagged }
+  return { succeeded, failed, recategorized, transfersFlagged, alerted }
 }

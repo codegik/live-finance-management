@@ -2,6 +2,7 @@ import { timingSafeEqual } from 'node:crypto'
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getDb } from '@/lib/db/client'
+import { createMailer } from '@/lib/email/resend'
 import { loadEnv } from '@/lib/env'
 import { createPluggyClient } from '@/lib/pluggy/client'
 import { syncByItemId } from '@/lib/sync/dispatch'
@@ -31,7 +32,9 @@ export async function POST(request: Request) {
     clientSecret: env.PLUGGY_CLIENT_SECRET,
   })
 
-  const { synced } = await syncByItemId(getDb(), pluggy, parsed.data.itemId)
+  const mailer = createMailer({ apiKey: env.RESEND_API_KEY, from: env.ALERT_EMAIL_FROM })
+
+  const { synced } = await syncByItemId(getDb(), pluggy, parsed.data.itemId, { mailer })
 
   return synced
     ? NextResponse.json({ ok: true }, { status: 200 })

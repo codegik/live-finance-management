@@ -1,6 +1,7 @@
 import { timingSafeEqual } from 'node:crypto'
 import { NextResponse } from 'next/server'
 import { getDb } from '@/lib/db/client'
+import { createMailer } from '@/lib/email/resend'
 import { loadEnv } from '@/lib/env'
 import { createPluggyClient } from '@/lib/pluggy/client'
 import { reconcileAll } from '@/lib/sync/reconcile'
@@ -27,7 +28,9 @@ export async function GET(request: Request) {
     clientSecret: env.PLUGGY_CLIENT_SECRET,
   })
 
-  const result = await reconcileAll(getDb(), pluggy)
+  const mailer = createMailer({ apiKey: env.RESEND_API_KEY, from: env.ALERT_EMAIL_FROM })
+
+  const result = await reconcileAll(getDb(), pluggy, { mailer })
 
   const status =
     result.failed.length === 0 ? 200 : result.succeeded.length === 0 ? 500 : 207
