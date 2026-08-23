@@ -1,11 +1,12 @@
 import { beforeEach, expect, it } from 'vitest'
 import { hashPassword } from '@/lib/auth/password'
-import { listConnections } from '@/lib/db/connections'
+import { listAccounts, listConnections } from '@/lib/db/connections'
 import { createHousehold } from '@/lib/db/households'
 import { listTransactions } from '@/lib/db/transactions'
 import { createPluggyClient } from '@/lib/pluggy/client'
 import { attachConnection } from '@/lib/sync/connect'
 import { syncConnection } from '@/lib/sync/transactions'
+import accountsFixture from './fixtures/pluggy/accounts.json'
 import { resetDb, testDb } from './helpers/db'
 import { startPluggyServer } from './helpers/pluggy-server'
 
@@ -257,4 +258,34 @@ it('does not leak transactions across households', async () => {
 
   expect(await listTransactions(db, other.householdId)).toHaveLength(0)
   expect(await listTransactions(db, householdId)).not.toHaveLength(0)
+})
+
+it('picks up an account opened on an already-connected login', async () => {
+  const { db, householdId, connectionId } = await seedConnection()
+
+  const { http, HttpResponse } = await import('msw')
+  // The same item now reports a second account. Until refreshAccounts ran on
+  // every sync, this account -- and every transaction in it -- was invisible
+  // until the connection was removed and re-added.
+  server.use(
+    http.get('https://api.pluggy.test/accounts', () =>
+      HttpResponse.json({
+        results: [
+          ...accountsFixture.results,
+          {
+            id: 'acc-bank-2',
+            itemId: 'item-nubank-1',
+            type: 'BANK',
+            name: 'Conta Poupanca',
+            number: '5555',
+          },
+        ],
+      }),
+    ),
+  )
+
+  await syncConnection(db, pluggy(), connectionId)
+
+  const rows = await listAccounts(db, householdId)
+  expect(rows.map((r) => r.pluggyAccountId)).toContain('acc-bank-2')
 })

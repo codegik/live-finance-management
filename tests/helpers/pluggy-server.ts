@@ -18,7 +18,15 @@ export function createPluggyServer(overrides: RequestHandler[] = []) {
     }),
     http.post(`${BASE}/connect_token`, () => HttpResponse.json({ accessToken: 'connect-token-abc' })),
     http.get(`${BASE}/items/:itemId`, () => HttpResponse.json(item)),
-    http.get(`${BASE}/accounts`, () => HttpResponse.json(accounts)),
+    // Real Pluggy scopes /accounts to the requested itemId (the client sends
+    // it as a query param); filtering here too matters now that
+    // refreshAccounts runs on every sync, not only at connect time, so a
+    // connection for one item never picks up another item's fixture accounts.
+    http.get(`${BASE}/accounts`, ({ request }) => {
+      const itemId = new URL(request.url).searchParams.get('itemId')
+      const results = itemId ? accounts.results.filter((a) => a.itemId === itemId) : accounts.results
+      return HttpResponse.json({ results })
+    }),
     // The v1 /transactions endpoint answers 410 ENDPOINT_DEPRECATED in
     // production. Mirroring that here means a regression back to it fails
     // loudly in the suite instead of only against the real API.
