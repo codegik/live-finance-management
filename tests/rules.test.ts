@@ -90,6 +90,7 @@ it('leaves a hand-set category alone when a rule would have claimed it', async (
   expect(changed).toBe(1)
   const rows = await listTransactions(db, householdId)
   expect(rows.find((r) => r.id === manualId)!.categoryId).toBe(leisure)
+  expect(rows.find((r) => r.id === manualId)!.categorySource).toBe('MANUAL')
 })
 
 it('returns transactions to the inbox when the rule is deleted', async () => {
@@ -110,12 +111,15 @@ it('returns transactions to the inbox when the rule is deleted', async () => {
   expect(rows[0].categorySource).toBeNull()
 })
 
-it('does not strand a rule when its backfill fails', async () => {
+it('rejects a rule pointing at a category that does not exist, leaving no row', async () => {
   const { db, householdId, accountId } = await seedHousehold()
   await insertTransaction(db, accountId, { description: 'ZAFFARI' })
 
   // A category id from no household at all: the insert violates the foreign
-  // key, so the whole transaction must roll back and leave no rule behind.
+  // key. This proves the insert itself is rejected -- it fires before
+  // recategorize is ever reached, so it does NOT prove insert-and-backfill
+  // atomicity. See tests/rules-atomicity.test.ts for that property, which
+  // needs fault injection past a successful insert.
   await expect(
     createRule(db, householdId, {
       matchType: 'EXACT',
@@ -123,6 +127,20 @@ it('does not strand a rule when its backfill fails', async () => {
       categoryId: '44444444-4444-4444-4444-444444444444',
     }),
   ).rejects.toThrow()
+
+  expect(await listRules(db, householdId)).toEqual([])
+})
+
+it('rejects a pattern that normalizes to nothing, writing no rule', async () => {
+  const { db, householdId } = await seedHousehold()
+  const supermarket = await categoryNamed(householdId, 'Supermercado')
+
+  // '***' has no alphanumeric characters, so normalizeMerchant reduces it to
+  // null -- createRule must refuse it rather than store an empty pattern
+  // that would match nothing (EXACT) or everything (CONTAINS).
+  await expect(
+    createRule(db, householdId, { matchType: 'EXACT', pattern: '***', categoryId: supermarket }),
+  ).rejects.toThrow('EMPTY_PATTERN')
 
   expect(await listRules(db, householdId)).toEqual([])
 })
