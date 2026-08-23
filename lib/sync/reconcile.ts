@@ -1,4 +1,5 @@
 import { seedCategories } from '@/lib/db/categories'
+import { seedDefaultRules } from '@/lib/db/rules'
 import type { Db } from '@/lib/db/client'
 import { connections } from '@/lib/db/schema'
 import type { PluggyClient } from '@/lib/pluggy/client'
@@ -57,6 +58,7 @@ export async function reconcileAll(
       // "no usable merchant" group, whose only offered action stamps every
       // row MANUAL -- which no sync or backfill ever revisits.
       await seedCategories(db, householdId)
+      await seedDefaultRules(db, householdId)
       const { changed } = await recategorize(db, { householdId })
       recategorized += changed
     } catch (error) {

@@ -22,6 +22,7 @@ export const SEED_CATEGORIES: SeedCategory[] = [
   { seedKey: 'leisure', name: 'Lazer' },
   { seedKey: 'clothing', name: 'Vestuário' },
   { seedKey: 'subscriptions', name: 'Assinaturas' },
+  { seedKey: 'car-maintenance', name: 'Manutenção de carro' },
   { seedKey: 'pets', name: 'Pets' },
   { seedKey: 'other', name: 'Outros' },
 ]

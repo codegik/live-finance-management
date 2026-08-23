@@ -1,5 +1,6 @@
 import { and, asc, eq } from 'drizzle-orm'
 import { normalizeMerchant } from '@/lib/domain/categorize'
+import { normalizedSeedRules } from '@/lib/domain/seed-rules'
 import { recategorize } from '@/lib/sync/categorize'
 import { categoryBelongsToHousehold } from './categories'
 import type { Db, Executor } from './client'
@@ -118,4 +119,44 @@ export async function deleteRule(
       match: { matchType: rule.matchType, pattern: rule.pattern },
     })
   })
+}
+
+/**
+ * Creates the household's default merchant rules, skipping any that already
+ * exist. Idempotent against the (household_id, match_type, pattern) unique
+ * index, so it is safe to run on every nightly reconcile.
+ *
+ * Unlike createRule this does NOT backfill: the only callers are household
+ * creation (where there is nothing to backfill) and reconcileAll, which runs
+ * a household-wide recategorize immediately afterwards.
+ *
+ * A seed rule naming a seed key the household has archived or deleted is
+ * skipped rather than failing -- the household's taxonomy is theirs to edit,
+ * and a default rule is not a reason to reject the whole run.
+ */
+export async function seedDefaultRules(exec: Executor, householdId: string): Promise<void> {
+  const owned = await exec
+    .select({ id: categories.id, seedKey: categories.seedKey })
+    .from(categories)
+    .where(eq(categories.householdId, householdId))
+
+  const idBySeedKey = new Map(
+    owned.flatMap((c) => (c.seedKey ? [[c.seedKey, c.id] as const] : [])),
+  )
+
+  const values = normalizedSeedRules().flatMap((rule) => {
+    const categoryId = idBySeedKey.get(rule.seedKey)
+    if (!categoryId) return []
+    return [{
+      householdId,
+      matchType: rule.matchType,
+      pattern: rule.pattern,
+      categoryId,
+      priority:
+        rule.matchType === 'EXACT' ? DEFAULT_EXACT_PRIORITY : DEFAULT_CONTAINS_PRIORITY,
+    }]
+  })
+
+  if (values.length === 0) return
+  await exec.insert(merchantRules).values(values).onConflictDoNothing()
 }

@@ -43,7 +43,7 @@ export const PLUGGY_CATEGORY_TO_SEED_KEY: Record<string, string> = {
   'Wellness and fitness': 'health',
   Gambling: 'leisure',
   Parking: 'transport',
-  'Vehicle maintenance': 'transport',
+  'Vehicle maintenance': 'car-maintenance',
   Healthcare: 'health',
   Optometry: 'health',
   'Online shopping': 'other',
@@ -66,7 +66,7 @@ export const PLUGGY_CATEGORY_TO_SEED_KEY: Record<string, string> = {
   'Health insurance': 'health',
   'Public transportation': 'transport',
   'Pet supplies and vet': 'pets',
-  Automotive: 'transport',
+  Automotive: 'car-maintenance',
   Dentist: 'health',
   Lottery: 'leisure',
 
