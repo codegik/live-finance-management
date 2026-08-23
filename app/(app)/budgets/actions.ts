@@ -11,12 +11,30 @@ import {
   type BudgetState,
 } from './state'
 
-/** '1.200,50' and '1200.50' both mean the same thing to a Brazilian household. */
+/**
+ * A Brazilian household writes '1.200,50'; a keyboard often produces
+ * '1200.50'. Both must mean the same amount.
+ *
+ * When a comma is present it is the decimal separator and every dot is a
+ * thousands separator. With no comma, a lone dot is ambiguous -- '1.200' is
+ * one thousand two hundred, '1200.50' is twelve hundred and fifty centavos.
+ * A dot followed by exactly three digits is a thousands separator; anything
+ * else is a decimal point. That is the rule Brazilian formatting actually
+ * follows, and getting it wrong overstates a budget by 100x.
+ */
 function parseReais(raw: string): number | null {
-  const trimmed = raw.trim()
+  const trimmed = raw.trim().replace(/^R\$\s*/i, '')
   if (trimmed === '') return null
 
-  const normalized = trimmed.replace(/\./g, '').replace(',', '.')
+  let normalized: string
+  if (trimmed.includes(',')) {
+    normalized = trimmed.replace(/\./g, '').replace(',', '.')
+  } else if (/\.\d{3}$/.test(trimmed) || /\.\d{3}\./.test(trimmed)) {
+    normalized = trimmed.replace(/\./g, '')
+  } else {
+    normalized = trimmed
+  }
+
   const value = Number(normalized)
   if (!Number.isFinite(value) || value < 0) throw new Error('INVALID_AMOUNT')
 
@@ -47,20 +65,25 @@ export async function saveBudgetsAction(
 
   const db = getDb()
   try {
-    for (const entry of parsed) {
-      if (entry.amountCents === null) {
-        await clearBudget(db, session.householdId, {
-          categoryId: entry.categoryId,
-          period,
-        })
-      } else {
-        await setBudget(db, session.householdId, {
-          categoryId: entry.categoryId,
-          period,
-          amountCents: entry.amountCents,
-        })
+    // The writes must be as atomic as the parse: one transaction, so a
+    // rejected category id partway through the form leaves nothing written
+    // rather than saving everything before it.
+    await db.transaction(async (tx) => {
+      for (const entry of parsed) {
+        if (entry.amountCents === null) {
+          await clearBudget(tx, session.householdId, {
+            categoryId: entry.categoryId,
+            period,
+          })
+        } else {
+          await setBudget(tx, session.householdId, {
+            categoryId: entry.categoryId,
+            period,
+            amountCents: entry.amountCents,
+          })
+        }
       }
-    }
+    })
   } catch (error) {
     if (error instanceof Error && error.message === 'UNKNOWN_CATEGORY') {
       return { error: UNKNOWN_CATEGORY_ERROR, message: null }
