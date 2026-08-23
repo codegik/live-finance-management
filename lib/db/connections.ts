@@ -1,5 +1,7 @@
 import { and, eq } from 'drizzle-orm'
+import { staleReason, type StaleReason } from '@/lib/domain/health'
 import type { Db } from './client'
+import { listHouseholdUsers } from './households'
 import { accounts, connections, type Account, type Connection } from './schema'
 
 export async function listConnections(db: Db, householdId: string): Promise<Connection[]> {
@@ -36,5 +38,63 @@ export async function listAccounts(
     ...r.account,
     ownerUserId: r.connection.ownerUserId,
     institution: r.connection.institution,
+  }))
+}
+
+export type ConnectionAccount = {
+  id: string
+  type: 'CREDIT' | 'BANK'
+  name: string
+  last4: string | null
+  dueDay: number | null
+}
+
+export type ConnectionDetail = {
+  id: string
+  institution: string
+  ownerName: string
+  status: Connection['status']
+  lastSyncedAt: Date | null
+  pluggyItemId: string
+  stale: StaleReason | null
+  accounts: ConnectionAccount[]
+}
+
+/**
+ * Everything the connections screen shows, in one household-scoped read.
+ *
+ * `stale` is resolved here rather than on the page so the screen and the
+ * banner cannot disagree about which connection is broken.
+ */
+export async function listConnectionDetails(
+  db: Db,
+  householdId: string,
+  opts: { now?: Date } = {},
+): Promise<ConnectionDetail[]> {
+  const now = opts.now ?? new Date()
+  const [rows, members] = await Promise.all([
+    listConnections(db, householdId),
+    listHouseholdUsers(db, householdId),
+  ])
+  const nameByUserId = new Map(members.map((m) => [m.id, m.name]))
+  const all = await listAccounts(db, householdId)
+
+  return rows.map((connection) => ({
+    id: connection.id,
+    institution: connection.institution,
+    ownerName: nameByUserId.get(connection.ownerUserId) ?? 'Unknown',
+    status: connection.status,
+    lastSyncedAt: connection.lastSyncedAt,
+    pluggyItemId: connection.pluggyItemId,
+    stale: staleReason(connection, now),
+    accounts: all
+      .filter((account) => account.connectionId === connection.id)
+      .map((account) => ({
+        id: account.id,
+        type: account.type,
+        name: account.name,
+        last4: account.last4,
+        dueDay: account.dueDay,
+      })),
   }))
 }

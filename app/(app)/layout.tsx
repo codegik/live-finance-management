@@ -31,6 +31,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             <Link href="/budgets">Budgets</Link>
           </li>
           <li>
+            <Link href="/settings/connections">Connections</Link>
+          </li>
+          <li>
             <Link href="/settings/categories">Categories</Link>
           </li>
           <li>

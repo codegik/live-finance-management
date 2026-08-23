@@ -1,5 +1,4 @@
 import Link from 'next/link'
-import { ConnectCardButton } from '@/components/ConnectCardButton'
 import { StaleBanner } from '@/components/StaleBanner'
 import { TransactionList } from '@/components/TransactionList'
 import { requireSession, toSignInOrThrow } from '@/lib/auth/session'
@@ -35,7 +34,7 @@ export default async function LedgerPage({
         <Link href={includeExcluded ? '/ledger' : '/ledger?transfers=1'}>
           {includeExcluded ? 'Hide transfers and income' : 'Show transfers and income'}
         </Link>
-        <ConnectCardButton />
+        <Link href="/settings/connections">Connections</Link>
       </header>
       <StaleBanner health={view.health} />
       <TransactionList days={view.days} />
