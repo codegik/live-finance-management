@@ -7,7 +7,7 @@ import { createRule } from '@/lib/db/rules'
 import { connections } from '@/lib/db/schema'
 import { listTransactions } from '@/lib/db/transactions'
 import { recategorize } from '@/lib/sync/categorize'
-import { refreshTransferFlags } from '@/lib/sync/transfers'
+import { refreshBudgetRoles } from '@/lib/sync/budget-roles'
 import { getForwardView } from '@/lib/views/forward'
 import { resetDb, testDb, useTestEnv } from './helpers/db'
 import { insertTransaction, seedAccount } from './helpers/transactions'
@@ -109,9 +109,9 @@ it('excludes transfers from the committed total', async () => {
   // -- it is a transfer, not spend, so it maps to no budget category.
   // Without a rule this row would keep a null category_id even after
   // recategorize, and the view drops null-category rows before the
-  // is_transfer predicate ever runs -- which would make this test pass for
+  // budget_role predicate ever runs -- which would make this test pass for
   // the wrong reason. The rule gives the row a real category, the way a
-  // household hand-writing one would, so is_transfer is the only thing left
+  // household hand-writing one would, so budget_role is the only thing left
   // that can exclude it from the total below. Do not remove this rule as a
   // "simplification" -- it is what keeps the test honest.
   await createRule(db, householdId, {
@@ -122,19 +122,19 @@ it('excludes transfers from the committed total', async () => {
   await recategorize(db, { householdId })
 
   // Prove the test's own premise instead of assuming it: the row must
-  // actually be categorized before is_transfer can be the thing under test.
+  // actually be categorized before budget_role can be the thing under test.
   const categorized = await listTransactions(db, householdId, {
     from: '2026-09-01',
     to: '2026-09-30',
-    includeTransfers: true,
+    includeExcluded: true,
   })
   expect(categorized.find((t) => t.description === 'PAGAMENTO PARC 02/03')!.categoryId).not.toBe(
     null,
   )
 
-  // The helper leaves is_transfer at its default, exactly as the migration
-  // leaves pre-existing rows, so the flag pass has to run first.
-  await refreshTransferFlags(db, householdId)
+  // The helper leaves budget_role at its SPEND default, exactly as the
+  // migration leaves pre-existing rows, so the role pass has to run first.
+  await refreshBudgetRoles(db, householdId)
 
   const months = await getForwardView(db, householdId, { now: NOW })
 

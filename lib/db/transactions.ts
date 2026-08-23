@@ -1,4 +1,5 @@
 import { and, desc, eq, gte, inArray, isNull, lte } from 'drizzle-orm'
+import type { BudgetRole } from '@/lib/domain/budget-role'
 import { categoryBelongsToHousehold } from './categories'
 import type { Db, Executor } from './client'
 import { accounts, categories, connections, transactions } from './schema'
@@ -15,7 +16,7 @@ export type TransactionRow = {
   categoryId: string | null
   categorySource: 'PLUGGY' | 'RULE' | 'MANUAL' | null
   categoryName: string | null
-  isTransfer: boolean
+  budgetRole: BudgetRole
   installmentNumber: number | null
   installmentTotal: number | null
   accountName: string
@@ -27,14 +28,14 @@ export type TransactionRow = {
 export async function listTransactions(
   db: Db,
   householdId: string,
-  opts: { from?: string; to?: string; includeTransfers?: boolean } = {},
+  opts: { from?: string; to?: string; includeExcluded?: boolean } = {},
 ): Promise<TransactionRow[]> {
   const filters = [eq(connections.householdId, householdId)]
   if (opts.from) filters.push(gte(transactions.date, opts.from))
   if (opts.to) filters.push(lte(transactions.date, opts.to))
-  // Invoice payments and fees are not spending. Callers that want them --
-  // the ledger's "show transfers" toggle -- ask explicitly.
-  if (!opts.includeTransfers) filters.push(eq(transactions.isTransfer, false))
+  // Invoice payments, fees and income are not spending. Callers that want
+  // them -- the ledger's "show everything" toggle -- ask explicitly.
+  if (!opts.includeExcluded) filters.push(eq(transactions.budgetRole, 'SPEND'))
 
   const rows = await db
     .select({ transaction: transactions, account: accounts, connection: connections, category: categories })
@@ -62,7 +63,7 @@ export async function listTransactions(
     categoryId: transaction.categoryId,
     categorySource: transaction.categorySource,
     categoryName: category?.name ?? null,
-    isTransfer: transaction.isTransfer,
+    budgetRole: transaction.budgetRole,
     installmentNumber: transaction.installmentNumber,
     installmentTotal: transaction.installmentTotal,
     accountName: account.name,

@@ -111,7 +111,7 @@ it('uses amount when the transaction is already in the account currency', () => 
 
 // --- the columns the budget slice reads --------------------------------------
 
-it('flags an invoice payment as a transfer at map time', () => {
+it('roles an invoice payment as a transfer at map time', () => {
   // Asserted on mapTransaction's OUTPUT, not through insertTransaction: the
   // test helper computes these fields itself, so a path that goes through it
   // stays green even with the mapper's assignments deleted.
@@ -130,7 +130,7 @@ it('flags an invoice payment as a transfer at map time', () => {
     'internal-account-id',
   )
 
-  expect(mapped.isTransfer).toBe(true)
+  expect(mapped.budgetRole).toBe('TRANSFER')
 })
 
 it('records the instalment parts of the descriptor at map time', () => {
@@ -150,7 +150,7 @@ it('records the instalment parts of the descriptor at map time', () => {
     'internal-account-id',
   )
 
-  expect(mapped.isTransfer).toBe(false)
+  expect(mapped.budgetRole).toBe('SPEND')
   expect(mapped).toMatchObject({ installmentNumber: 3, installmentTotal: 12 })
 })
 

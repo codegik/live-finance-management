@@ -3,6 +3,7 @@ import type { Db } from '@/lib/db/client'
 import { accounts, connections, transactions } from '@/lib/db/schema'
 import { mapTransaction } from '@/lib/pluggy/mapper'
 import type { PluggyClient } from '@/lib/pluggy/client'
+import { refreshAccounts } from './accounts'
 import { recategorize } from './categorize'
 
 /**
@@ -28,6 +29,11 @@ export async function syncConnection(
   if (!connection) throw new Error('UNKNOWN_CONNECTION')
 
   const item = await pluggy.getItem(connection.pluggyItemId)
+
+  // Before reading local accounts, not after: an account opened since the
+  // last sync must be in the list this sync then walks.
+  await refreshAccounts(db, pluggy, connectionId, connection.pluggyItemId)
+
   const localAccounts = await db
     .select()
     .from(accounts)
@@ -53,7 +59,7 @@ export async function syncConnection(
             merchantRaw: row.merchantRaw,
             merchantNormalized: row.merchantNormalized,
             pluggyCategory: row.pluggyCategory,
-            isTransfer: row.isTransfer,
+            budgetRole: row.budgetRole,
             installmentNumber: row.installmentNumber,
             installmentTotal: row.installmentTotal,
             updatedAt: new Date(),

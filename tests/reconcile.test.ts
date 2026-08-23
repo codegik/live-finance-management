@@ -231,7 +231,7 @@ it('reports 500 through the route when every connection fails', async () => {
   expect(body.failed).toHaveLength(1)
 })
 
-it('recategorizes and re-flags transfers for every household after the nightly sync', async () => {
+it('recategorizes and corrects budget roles for every household after the nightly sync', async () => {
   const { db, householdId, connectionId } = await seed()
   // Every fixture transaction is touched -- and so already recategorized --
   // by its own connection's sync, so a genuinely stale row (the kind an
@@ -244,9 +244,9 @@ it('recategorizes and re-flags transfers for every household after the nightly s
     pluggyCategory: 'Supermarkets',
   })
   // An invoice payment on the same unreachable account, so nothing but
-  // refreshTransferFlags can put is_transfer right on it. This is the shape
-  // migration 0006 leaves behind on every pre-existing row: real Pluggy
-  // category, is_transfer still at its false default.
+  // refreshBudgetRoles can put budget_role right on it. This is the shape
+  // migration 0009 leaves behind on every pre-existing row: real Pluggy
+  // category, budget_role still at its SPEND default.
   const invoiceId = await insertTransaction(db, accountId, {
     description: 'PAGAMENTO FATURA',
     amountCents: -177_174_79,
@@ -264,14 +264,14 @@ it('recategorizes and re-flags transfers for every household after the nightly s
   expect(result.failed).toEqual([])
   expect(result.recategorized).toBeGreaterThan(0)
   // Asserted the way `recategorized` is: without it, deleting the
-  // refreshTransferFlags call from reconcileAll leaves the suite green, and
-  // that call is the only thing that corrects is_transfer on rows the mapper
+  // refreshBudgetRoles call from reconcileAll leaves the suite green, and
+  // that call is the only thing that corrects budget_role on rows the mapper
   // never sees.
-  expect(result.transfersFlagged).toBe(1)
-  const rows = await listTransactions(db, householdId, { includeTransfers: true })
+  expect(result.rolesCorrected).toBe(1)
+  const rows = await listTransactions(db, householdId, { includeExcluded: true })
   expect(rows.find((r) => r.pluggyTransactionId === 'tx-1')!.categoryId).not.toBeNull()
   expect(rows.find((r) => r.id === staleId)!.categoryId).not.toBeNull()
-  expect(rows.find((r) => r.id === invoiceId)!.isTransfer).toBe(true)
+  expect(rows.find((r) => r.id === invoiceId)!.budgetRole).toBe('TRANSFER')
 })
 
 // --- the household that predates the categorization migration ----------------
@@ -448,6 +448,40 @@ it('sends one alert message per reconcile even when the household has two connec
   // actually distinguishes "evaluated once per household" from "evaluated
   // once per connection, masked by idempotency".
   expect(alertsEvaluate.evaluateAndNotify).toHaveBeenCalledTimes(1)
+})
+
+it('still alerts the household when a sibling connection fails', async () => {
+  // Distinct from 'keeps reconciling connections that come after a failed
+  // one': that test proves the sync loop does not stop, but seeds no budget
+  // crossing and asserts no mail. This proves the household-wide alert pass
+  // still runs -- and still notifies -- when one of its own connections is
+  // the one that failed, which is exactly the shape a second card adds.
+  const now = new Date()
+  const { db, householdId, userId, connectionId } = await seed()
+  await db.insert(connections).values({
+    householdId,
+    ownerUserId: userId,
+    pluggyItemId: 'item-broken',
+    institution: 'Broken Bank',
+    status: 'UPDATED',
+  })
+  await seedCrossing(db, householdId, connectionId, now)
+  const { mailer, sent } = createRecordingMailer()
+
+  const { http, HttpResponse } = await import('msw')
+  server.use(
+    http.get('https://api.pluggy.test/items/item-broken', () =>
+      HttpResponse.json({ error: 'boom' }, { status: 500 }),
+    ),
+  )
+
+  const result = await reconcileAll(db, pluggy(), { mailer, now })
+
+  expect(result.failed).toHaveLength(1)
+  expect(result.succeeded).toHaveLength(1)
+  expect(await listTransactions(db, householdId)).not.toHaveLength(0)
+  expect(sent).toHaveLength(1)
+  expect(sent[0].subject).toContain('Supermercado')
 })
 
 it('reports a reconcile as succeeded even when the alert mail fails', async () => {

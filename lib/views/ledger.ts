@@ -20,18 +20,18 @@ export type LedgerView = {
   health: HouseholdHealth
   days: LedgerDay[]
   uncategorizedCount: number
-  includingTransfers: boolean
+  includingExcluded: boolean
 }
 
 export async function getLedgerView(
   db: Db,
   householdId: string,
-  opts: { now?: Date; includeTransfers?: boolean } = {},
+  opts: { now?: Date; includeExcluded?: boolean } = {},
 ): Promise<LedgerView> {
-  const includingTransfers = opts.includeTransfers ?? false
+  const includingExcluded = opts.includeExcluded ?? false
 
   const [rows, members, health, uncategorizedCount] = await Promise.all([
-    listTransactions(db, householdId, { includeTransfers: includingTransfers }),
+    listTransactions(db, householdId, { includeExcluded: includingExcluded }),
     listHouseholdUsers(db, householdId),
     getHouseholdHealth(db, householdId, opts),
     countUncategorized(db, householdId),
@@ -59,6 +59,6 @@ export async function getLedgerView(
     health,
     days: [...byDate.values()].sort((a, b) => b.date.localeCompare(a.date)),
     uncategorizedCount,
-    includingTransfers,
+    includingExcluded,
   }
 }

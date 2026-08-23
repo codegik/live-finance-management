@@ -20,6 +20,7 @@ import { POST as connectTokenPost } from '@/app/api/pluggy/connect-token/route'
 import { hashPassword } from '@/lib/auth/password'
 import { listConnections } from '@/lib/db/connections'
 import { createHousehold } from '@/lib/db/households'
+import { connections } from '@/lib/db/schema'
 import { getLedgerView } from '@/lib/views/ledger'
 import { resetDb, testDb, useTestEnv } from './helpers/db'
 import { startPluggyServer } from './helpers/pluggy-server'
@@ -62,7 +63,9 @@ it('answers an unauthenticated POST /api/connections with 401, not 500', async (
 })
 
 it('answers an unauthenticated POST /api/pluggy/connect-token with 401, not 500', async () => {
-  const response = await connectTokenPost()
+  const response = await connectTokenPost(
+    jsonRequest('https://app.test/api/pluggy/connect-token', {}),
+  )
 
   expect(response.status).toBe(401)
   expect(await response.json()).toEqual({ error: 'UNAUTHORIZED' })
@@ -85,10 +88,64 @@ it('answers an unauthenticated POST /api/household/invites with 401, not 500', a
 it('mints a connect token for a signed-in caller', async () => {
   await signedIn()
 
-  const response = await connectTokenPost()
+  const response = await connectTokenPost(
+    jsonRequest('https://app.test/api/pluggy/connect-token', {}),
+  )
 
   expect(response.status).toBe(200)
   expect(await response.json()).toEqual({ accessToken: 'connect-token-abc' })
+})
+
+it('mints an update-mode token for an item in the caller session household', async () => {
+  const { db, householdId, userId } = await signedIn()
+  await db.insert(connections).values({
+    householdId,
+    ownerUserId: userId,
+    pluggyItemId: 'item-nubank-1',
+    institution: 'Nubank',
+    status: 'LOGIN_ERROR',
+  })
+
+  const response = await connectTokenPost(
+    jsonRequest('https://app.test/api/pluggy/connect-token', { itemId: 'item-nubank-1' }),
+  )
+
+  expect(response.status).toBe(200)
+  expect(await response.json()).toEqual({ accessToken: 'connect-token-abc' })
+})
+
+it('refuses an update-mode token for another household item', async () => {
+  // Without this the item id is the only thing standing between a signed-in
+  // user and a token that reopens someone else's bank connection.
+  const { db } = await signedIn()
+  const other = await createHousehold(db, {
+    name: 'Other',
+    owner: { email: 'other@example.com', name: 'Other', passwordHash: await hashPassword('pw') },
+  })
+  await db.insert(connections).values({
+    householdId: other.householdId,
+    ownerUserId: other.userId,
+    pluggyItemId: 'item-theirs-1',
+    institution: 'Itau',
+    status: 'UPDATED',
+  })
+
+  const response = await connectTokenPost(
+    jsonRequest('https://app.test/api/pluggy/connect-token', { itemId: 'item-theirs-1' }),
+  )
+
+  expect(response.status).toBe(404)
+  expect(await response.json()).toEqual({ error: 'UNKNOWN_CONNECTION' })
+})
+
+it('still mints a plain token when no item is named', async () => {
+  await signedIn()
+
+  const response = await connectTokenPost(
+    jsonRequest('https://app.test/api/pluggy/connect-token', {}),
+  )
+
+  expect(response.status).toBe(200)
 })
 
 it('creates an invite for the caller household', async () => {

@@ -1,6 +1,5 @@
 import {
   bigint,
-  boolean,
   date,
   index,
   integer,
@@ -64,6 +63,8 @@ export const categorySourceEnum = pgEnum('category_source', ['PLUGGY', 'RULE', '
 
 export const ruleMatchTypeEnum = pgEnum('rule_match_type', ['EXACT', 'CONTAINS'])
 
+export const budgetRoleEnum = pgEnum('budget_role', ['SPEND', 'TRANSFER', 'INCOME'])
+
 export const connections = pgTable(
   'connection',
   {
@@ -97,6 +98,11 @@ export const accounts = pgTable(
     dueDay: integer('due_day'),
     closingDay: integer('closing_day'),
     creditLimitCents: bigint('credit_limit_cents', { mode: 'number' }),
+    // Pluggy's value stays in due_day / closing_day and is rewritten freely by
+    // every sync. A household override lives here, so an edit can never be
+    // clobbered and the sync path needs no knowledge that overrides exist.
+    dueDayOverride: integer('due_day_override'),
+    closingDayOverride: integer('closing_day_override'),
   },
   (t) => [uniqueIndex('account_pluggy_unique').on(t.pluggyAccountId)],
 )
@@ -230,9 +236,10 @@ export const transactions = pgTable(
     merchantNormalized: text('merchant_normalized'),
     categoryId: uuid('category_id').references(() => categories.id),
     categorySource: categorySourceEnum('category_source'),
-    // Money that moves without being spent: invoice payments, transfers and
-    // fees. Excluded from every total; see lib/domain/transfers.ts.
-    isTransfer: boolean('is_transfer').notNull().default(false),
+    // What this row is, for budgeting: spending, money moving between the
+    // household's own accounts, or money arriving. Only SPEND counts against
+    // a budget. See lib/domain/budget-role.ts.
+    budgetRole: budgetRoleEnum('budget_role').notNull().default('SPEND'),
     // Parsed from the descriptor at ingest. Both set or both null. A row with
     // these is money already committed, which is what pace and the forward
     // view are built on.

@@ -54,8 +54,8 @@ export async function getCategorySpend(
     .where(
       and(
         eq(connections.householdId, householdId),
-        // Invoice payments and fees are not spending.
-        eq(transactions.isTransfer, false),
+        // Only spending counts: not invoice payments, not salary.
+        eq(transactions.budgetRole, 'SPEND'),
         gte(transactions.date, start),
         lte(transactions.date, end),
       ),

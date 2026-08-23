@@ -31,7 +31,7 @@ try {
 
   const mailer = createMailer({ apiKey: env.RESEND_API_KEY, from: env.ALERT_EMAIL_FROM })
 
-  const { succeeded, failed, recategorized, transfersFlagged, alerted } = await reconcileAll(
+  const { succeeded, failed, recategorized, rolesCorrected, alerted } = await reconcileAll(
     db,
     pluggy,
     { mailer },
@@ -39,7 +39,7 @@ try {
   // recategorized belongs in the log: it is the only observable signal that a
   // normalizer or Pluggy-mapping change actually landed on real rows.
   console.log(
-    `reconcile finished: ${succeeded.length} succeeded, ${failed.length} failed, ${recategorized} recategorized, ${transfersFlagged} transfers flagged, ${alerted} alerts sent`,
+    `reconcile finished: ${succeeded.length} succeeded, ${failed.length} failed, ${recategorized} recategorized, ${rolesCorrected} roles corrected, ${alerted} alerts sent`,
   )
 
   if (failed.length > 0) {

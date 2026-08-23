@@ -262,7 +262,7 @@ it('ignores transfers, so paying a card invoice never trips a threshold', async 
     amountCents: 100_000,
   })
   const txId = await spend(householdId, accountId, supermarket, 500_000)
-  await db.update(transactions).set({ isTransfer: true }).where(eq(transactions.id, txId))
+  await db.update(transactions).set({ budgetRole: 'TRANSFER' }).where(eq(transactions.id, txId))
   const { mailer, sent } = createRecordingMailer()
 
   await evaluateAndNotify(db, mailer, householdId, { now: NOW })

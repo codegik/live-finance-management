@@ -5,7 +5,7 @@ import { archiveCategory, listCategories } from '@/lib/db/categories'
 import { createHousehold } from '@/lib/db/households'
 import { connections } from '@/lib/db/schema'
 import { recategorize } from '@/lib/sync/categorize'
-import { refreshTransferFlags } from '@/lib/sync/transfers'
+import { refreshBudgetRoles } from '@/lib/sync/budget-roles'
 import { getDashboardView } from '@/lib/views/dashboard'
 import { resetDb, testDb, useTestEnv } from './helpers/db'
 import { insertTransaction, seedAccount } from './helpers/transactions'
@@ -55,7 +55,7 @@ it('reports spend, budget and pace for the current month', async () => {
   })
   await setBudget(db, householdId, { categoryId: supermarket, period: '2026-08', amountCents: 120_000 })
   // insertTransaction is a raw seed and deliberately leaves category_id
-  // unset, exactly as it leaves is_transfer at its default -- recategorize()
+  // unset, exactly as it leaves budget_role at its default -- recategorize()
   // is the only code that resolves a Pluggy category into a household's
   // category id (lib/sync/categorize.ts), and in production the ingest
   // pipeline runs it on every synced row.
@@ -115,7 +115,7 @@ it('leaves invoice payments out of every figure', async () => {
     date: '2026-08-06',
     pluggyCategory: 'Credit card payment',
   })
-  await refreshTransferFlags(db, householdId)
+  await refreshBudgetRoles(db, householdId)
 
   const view = await getDashboardView(db, householdId, { now: NOW })
 

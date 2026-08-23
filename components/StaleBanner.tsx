@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import type { HouseholdHealth } from '@/lib/db/health'
 
 export function StaleBanner({ health }: { health: HouseholdHealth }) {
@@ -9,7 +10,7 @@ export function StaleBanner({ health }: { health: HouseholdHealth }) {
       <ul>
         {health.stale.map((s) => (
           <li key={s.connectionId}>
-            {s.institution}{' '}
+            <Link href="/settings/connections">{s.institution}</Link>{' '}
             {s.reason === 'NEEDS_REAUTH' ? 'needs reconnecting' : 'has not updated recently'}
           </li>
         ))}
