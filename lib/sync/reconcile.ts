@@ -1,3 +1,4 @@
+import { seedCategories } from '@/lib/db/categories'
 import type { Db } from '@/lib/db/client'
 import { connections } from '@/lib/db/schema'
 import type { PluggyClient } from '@/lib/pluggy/client'
@@ -38,9 +39,29 @@ export async function reconcileAll(
   let recategorized = 0
   for (const { householdId } of households) {
     try {
+      // Seed FIRST, recategorize SECOND, and the order is load-bearing.
+      //
+      // A household that predates the categorization migration has no
+      // category rows at all -- seedCategories only ever ran from household
+      // creation, and the migration inserts nothing. With an empty taxonomy
+      // recategorize can resolve nothing: every Pluggy category falls
+      // through to null and the whole slice is inert. Seeding here is the
+      // backfill; it is idempotent (onConflictDoNothing on
+      // (household_id, seed_key)), so for every other household it is a
+      // no-op.
+      //
+      // recategorize then has categories to resolve into, and it is also
+      // what backfills merchant_normalized on the pre-existing rows the
+      // migration left NULL. That matters beyond tidiness: until they are
+      // normalized the inbox groups the entire back-catalogue under one
+      // "no usable merchant" group, whose only offered action stamps every
+      // row MANUAL -- which no sync or backfill ever revisits.
+      await seedCategories(db, householdId)
       const { changed } = await recategorize(db, { householdId })
       recategorized += changed
     } catch (error) {
+      // Same try/catch as before, now covering the seed too: a failure to
+      // seed one household must not stop the others being recategorized.
       console.error('recategorize failed', { householdId, error })
     }
   }

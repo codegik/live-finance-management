@@ -25,10 +25,14 @@ function escapeLike(value: string): string {
  *
  * MANUAL rows are excluded in the query predicate rather than filtered in
  * code, so the guarantee lives in one WHERE clause instead of being
- * remembered at three call sites. One consequence is deliberate: a MANUAL
- * row's merchant_normalized is set at ingest and never revised, which is
- * harmless because nothing reads it for such a row — it is excluded from
- * rule matching and from the inbox alike.
+ * remembered at three call sites. What that excludes is precisely the
+ * *category*: a MANUAL row's category_id and category_source are never
+ * recomputed by anything. Its merchant_normalized is a different matter —
+ * lib/sync/transactions.ts includes merchantNormalized in its
+ * onConflictDoUpdate set, so every sync refreshes it for all rows, MANUAL
+ * ones included. That is harmless (it writes the freshly computed value) and
+ * nothing depends on it for such a row: it is excluded from rule matching
+ * and from the inbox alike.
  */
 export async function recategorize(
   exec: Executor,
