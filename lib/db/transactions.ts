@@ -1,4 +1,5 @@
 import { and, desc, eq, gte, inArray, isNull, lte } from 'drizzle-orm'
+import { categoryBelongsToHousehold } from './categories'
 import type { Db, Executor } from './client'
 import { accounts, connections, transactions } from './schema'
 
@@ -74,6 +75,12 @@ export async function setTransactionCategory(
   transactionId: string,
   categoryId: string,
 ): Promise<void> {
+  // A category id from another household must never be usable here -- see
+  // the identical guard in lib/db/rules.ts createRule for why.
+  if (!(await categoryBelongsToHousehold(exec, householdId, categoryId))) {
+    throw new Error('UNKNOWN_CATEGORY')
+  }
+
   await exec
     .update(transactions)
     .set({ categoryId, categorySource: 'MANUAL', updatedAt: new Date() })
@@ -98,6 +105,12 @@ export async function setCategoryForMerchant(
   merchant: string | null,
   categoryId: string,
 ): Promise<{ changed: number }> {
+  // A category id from another household must never be usable here -- see
+  // the identical guard in lib/db/rules.ts createRule for why.
+  if (!(await categoryBelongsToHousehold(exec, householdId, categoryId))) {
+    throw new Error('UNKNOWN_CATEGORY')
+  }
+
   const rows = await exec
     .update(transactions)
     .set({ categoryId, categorySource: 'MANUAL', updatedAt: new Date() })

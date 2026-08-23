@@ -10,6 +10,7 @@ import {
   EMPTY_PATTERN_ERROR,
   MISSING_FIELD_ERROR,
   type AssignState,
+  UNKNOWN_CATEGORY_ERROR,
 } from './state'
 
 export async function assignGroupAction(
@@ -44,18 +45,29 @@ export async function assignGroupAction(
     } catch (error) {
       // normalizeMerchant strips punctuation before checking emptiness, so a
       // pattern like '***' passes the trim() guard above but still reduces
-      // to nothing once createRule normalizes it. That's ordinary user
-      // error, not a server fault -- report it as form state. Anything else
-      // still surfaces as a 500, which is what it is.
+      // to nothing once createRule normalizes it. A forged categoryId that
+      // does not belong to this household is the same kind of ordinary user
+      // error, not a server fault -- report both as form state. Anything
+      // else still surfaces as a 500, which is what it is.
       if (error instanceof Error && error.message === 'EMPTY_PATTERN') {
         return { error: EMPTY_PATTERN_ERROR, message: null }
+      }
+      if (error instanceof Error && error.message === 'UNKNOWN_CATEGORY') {
+        return { error: UNKNOWN_CATEGORY_ERROR, message: null }
       }
       throw error
     }
   }
 
-  const { changed } = await setCategoryForMerchant(db, session.householdId, merchant, categoryId)
-  revalidatePath('/inbox')
-  revalidatePath('/ledger')
-  return { error: null, message: `${ASSIGNED_MESSAGE} — ${changed} transactions moved.` }
+  try {
+    const { changed } = await setCategoryForMerchant(db, session.householdId, merchant, categoryId)
+    revalidatePath('/inbox')
+    revalidatePath('/ledger')
+    return { error: null, message: `${ASSIGNED_MESSAGE} — ${changed} transactions moved.` }
+  } catch (error) {
+    if (error instanceof Error && error.message === 'UNKNOWN_CATEGORY') {
+      return { error: UNKNOWN_CATEGORY_ERROR, message: null }
+    }
+    throw error
+  }
 }

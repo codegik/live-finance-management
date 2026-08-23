@@ -3,7 +3,7 @@ import { hashPassword } from '@/lib/auth/password'
 import { listCategories } from '@/lib/db/categories'
 import { createHousehold } from '@/lib/db/households'
 import { createRule, deleteRule, listRules } from '@/lib/db/rules'
-import { listTransactions, setTransactionCategory } from '@/lib/db/transactions'
+import { listTransactions, setCategoryForMerchant, setTransactionCategory } from '@/lib/db/transactions'
 import { resetDb, testDb, useTestEnv } from './helpers/db'
 import { insertTransaction, seedAccount } from './helpers/transactions'
 import { connections } from '@/lib/db/schema'
@@ -129,6 +129,63 @@ it('rejects a rule pointing at a category that does not exist, leaving no row', 
   ).rejects.toThrow()
 
   expect(await listRules(db, householdId)).toEqual([])
+})
+
+it("rejects a rule pointing at another household's category, leaving no row", async () => {
+  const { db, householdId, accountId } = await seedHousehold()
+  await insertTransaction(db, accountId, { description: 'ZAFFARI' })
+  const { householdId: otherHouseholdId } = await createHousehold(db, {
+    name: 'Other',
+    owner: { email: 'other-cat@example.com', name: 'Other', passwordHash: await hashPassword('pw') },
+  })
+  const otherCategory = await categoryNamed(otherHouseholdId, 'Supermercado')
+
+  // A category id that is real, just not this household's -- the FK alone
+  // would happily accept it, which is exactly why createRule must check
+  // ownership itself before the insert.
+  await expect(
+    createRule(db, householdId, {
+      matchType: 'EXACT',
+      pattern: 'ZAFFARI',
+      categoryId: otherCategory,
+    }),
+  ).rejects.toThrow('UNKNOWN_CATEGORY')
+
+  expect(await listRules(db, householdId)).toEqual([])
+})
+
+it("rejects setTransactionCategory pointing at another household's category", async () => {
+  const { db, householdId, accountId } = await seedHousehold()
+  const txId = await insertTransaction(db, accountId, { description: 'ZAFFARI' })
+  const { householdId: otherHouseholdId } = await createHousehold(db, {
+    name: 'Other',
+    owner: { email: 'other-manual@example.com', name: 'Other', passwordHash: await hashPassword('pw') },
+  })
+  const otherCategory = await categoryNamed(otherHouseholdId, 'Supermercado')
+
+  await expect(setTransactionCategory(db, householdId, txId, otherCategory)).rejects.toThrow(
+    'UNKNOWN_CATEGORY',
+  )
+
+  const rows = await listTransactions(db, householdId)
+  expect(rows.find((r) => r.id === txId)!.categoryId).toBeNull()
+})
+
+it("rejects setCategoryForMerchant pointing at another household's category", async () => {
+  const { db, householdId, accountId } = await seedHousehold()
+  await insertTransaction(db, accountId, { description: 'ZAFFARI' })
+  const { householdId: otherHouseholdId } = await createHousehold(db, {
+    name: 'Other',
+    owner: { email: 'other-merchant@example.com', name: 'Other', passwordHash: await hashPassword('pw') },
+  })
+  const otherCategory = await categoryNamed(otherHouseholdId, 'Supermercado')
+
+  await expect(
+    setCategoryForMerchant(db, householdId, 'ZAFFARI', otherCategory),
+  ).rejects.toThrow('UNKNOWN_CATEGORY')
+
+  const rows = await listTransactions(db, householdId)
+  expect(rows.every((r) => r.categoryId === null)).toBe(true)
 })
 
 it('rejects a pattern that normalizes to nothing, writing no rule', async () => {

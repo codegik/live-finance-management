@@ -1,6 +1,7 @@
 import { and, asc, eq } from 'drizzle-orm'
 import { normalizeMerchant } from '@/lib/domain/categorize'
 import { recategorize } from '@/lib/sync/categorize'
+import { categoryBelongsToHousehold } from './categories'
 import type { Db, Executor } from './client'
 import { categories, merchantRules } from './schema'
 
@@ -64,6 +65,14 @@ export async function createRule(
     (input.matchType === 'EXACT' ? DEFAULT_EXACT_PRIORITY : DEFAULT_CONTAINS_PRIORITY)
 
   return db.transaction(async (tx) => {
+    // A category id from another household must never be usable here: it
+    // would insert successfully against the global FK and then recategorize
+    // this household's transactions into a category that renders on the
+    // ledger and that Slice 3's budgets key off of.
+    if (!(await categoryBelongsToHousehold(tx, householdId, input.categoryId))) {
+      throw new Error('UNKNOWN_CATEGORY')
+    }
+
     const [rule] = await tx
       .insert(merchantRules)
       .values({

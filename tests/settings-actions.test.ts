@@ -21,6 +21,9 @@ const { archiveCategoryAction, createCategoryAction, renameCategoryAction } = aw
   '@/app/(app)/settings/categories/actions'
 )
 const { createRuleAction, deleteRuleAction } = await import('@/app/(app)/settings/rules/actions')
+const { DUPLICATE_RULE_ERROR, UNKNOWN_CATEGORY_ERROR } = await import(
+  '@/app/(app)/settings/categories/state'
+)
 
 const EMPTY = { error: null, message: null }
 
@@ -127,6 +130,40 @@ it('refuses a rule with an empty pattern', async () => {
   )
 
   expect(result.error).not.toBeNull()
+  expect(await listRules(db, householdId)).toEqual([])
+})
+
+it('reports a duplicate rule as a friendly error instead of a 500', async () => {
+  const { db, householdId } = await seedHousehold()
+  const [supermarket] = await listCategories(db, householdId)
+  await createRuleAction(
+    EMPTY,
+    form({ matchType: 'EXACT', pattern: 'ZAFFARI', categoryId: supermarket.id }),
+  )
+
+  const result = await createRuleAction(
+    EMPTY,
+    form({ matchType: 'EXACT', pattern: 'ZAFFARI', categoryId: supermarket.id }),
+  )
+
+  expect(result.error).toBe(DUPLICATE_RULE_ERROR)
+  expect(await listRules(db, householdId)).toHaveLength(1)
+})
+
+it('reports a category from another household as a friendly error instead of a 500', async () => {
+  const { db, householdId } = await seedHousehold()
+  const { householdId: otherHouseholdId } = await createHousehold(db, {
+    name: 'Other',
+    owner: { email: 'other@example.com', name: 'Other', passwordHash: await hashPassword('pw') },
+  })
+  const [otherCategory] = await listCategories(db, otherHouseholdId)
+
+  const result = await createRuleAction(
+    EMPTY,
+    form({ matchType: 'EXACT', pattern: 'ZAFFARI', categoryId: otherCategory.id }),
+  )
+
+  expect(result.error).toBe(UNKNOWN_CATEGORY_ERROR)
   expect(await listRules(db, householdId)).toEqual([])
 })
 

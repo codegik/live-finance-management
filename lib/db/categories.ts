@@ -71,3 +71,21 @@ export async function archiveCategory(
     .set({ archivedAt: new Date() })
     .where(and(eq(categories.id, categoryId), eq(categories.householdId, householdId)))
 }
+
+/**
+ * A category id is only usable by the household that owns it. Archived
+ * categories still count as belonging -- a MANUAL assignment to an archived
+ * category is legitimate, only the picker hides it.
+ */
+export async function categoryBelongsToHousehold(
+  exec: Executor,
+  householdId: string,
+  categoryId: string,
+): Promise<boolean> {
+  const rows = await exec
+    .select({ id: categories.id })
+    .from(categories)
+    .where(and(eq(categories.id, categoryId), eq(categories.householdId, householdId)))
+    .limit(1)
+  return rows.length > 0
+}
