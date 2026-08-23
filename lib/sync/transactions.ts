@@ -53,6 +53,9 @@ export async function syncConnection(
             merchantRaw: row.merchantRaw,
             merchantNormalized: row.merchantNormalized,
             pluggyCategory: row.pluggyCategory,
+            isTransfer: row.isTransfer,
+            installmentNumber: row.installmentNumber,
+            installmentTotal: row.installmentTotal,
             updatedAt: new Date(),
           },
         })

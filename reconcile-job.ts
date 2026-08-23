@@ -28,11 +28,11 @@ try {
     clientSecret: env.PLUGGY_CLIENT_SECRET,
   })
 
-  const { succeeded, failed, recategorized } = await reconcileAll(db, pluggy)
+  const { succeeded, failed, recategorized, transfersFlagged } = await reconcileAll(db, pluggy)
   // recategorized belongs in the log: it is the only observable signal that a
   // normalizer or Pluggy-mapping change actually landed on real rows.
   console.log(
-    `reconcile finished: ${succeeded.length} succeeded, ${failed.length} failed, ${recategorized} recategorized`,
+    `reconcile finished: ${succeeded.length} succeeded, ${failed.length} failed, ${recategorized} recategorized, ${transfersFlagged} transfers flagged`,
   )
 
   if (failed.length > 0) {

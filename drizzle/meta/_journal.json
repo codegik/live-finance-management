@@ -43,6 +43,13 @@
       "when": 1787457122515,
       "tag": "0005_categorization",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1787495009058,
+      "tag": "0006_budgets",
+      "breakpoints": true
     }
   ]
 }

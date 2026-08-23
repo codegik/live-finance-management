@@ -4,13 +4,19 @@ import type { Db } from '@/lib/db/client'
 import { connections } from '@/lib/db/schema'
 import type { PluggyClient } from '@/lib/pluggy/client'
 import { recategorize } from './categorize'
+import { refreshTransferFlags } from './transfers'
 import { syncConnection } from './transactions'
 
 export async function reconcileAll(
   db: Db,
   pluggy: PluggyClient,
   opts: { now?: Date } = {},
-): Promise<{ succeeded: string[]; failed: string[]; recategorized: number }> {
+): Promise<{
+  succeeded: string[]
+  failed: string[]
+  recategorized: number
+  transfersFlagged: number
+}> {
   const all = await db
     .select({ id: connections.id })
     .from(connections)
@@ -38,6 +44,7 @@ export async function reconcileAll(
     .from(connections)
 
   let recategorized = 0
+  let transfersFlagged = 0
   for (const { householdId } of households) {
     try {
       // Seed FIRST, recategorize SECOND, and the order is load-bearing.
@@ -59,6 +66,10 @@ export async function reconcileAll(
       // row MANUAL -- which no sync or backfill ever revisits.
       await seedCategories(db, householdId)
       await seedDefaultRules(db, householdId)
+      // Before recategorize, so the inbox count it produces already excludes
+      // invoice payments and fees rather than counting them as work.
+      const { flagged } = await refreshTransferFlags(db, householdId)
+      transfersFlagged += flagged
       const { changed } = await recategorize(db, { householdId })
       recategorized += changed
     } catch (error) {
@@ -68,5 +79,5 @@ export async function reconcileAll(
     }
   }
 
-  return { succeeded, failed, recategorized }
+  return { succeeded, failed, recategorized, transfersFlagged }
 }
