@@ -9,6 +9,7 @@ export type TransactionRow = {
   amountCents: number
   description: string
   merchantRaw: string | null
+  merchantNormalized: string | null
   pluggyCategory: string | null
   accountName: string
   accountLast4: string | null
@@ -43,6 +44,7 @@ export async function listTransactions(
     amountCents: transaction.amountCents,
     description: transaction.description,
     merchantRaw: transaction.merchantRaw,
+    merchantNormalized: transaction.merchantNormalized,
     pluggyCategory: transaction.pluggyCategory,
     accountName: account.name,
     accountLast4: account.last4,

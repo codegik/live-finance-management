@@ -49,6 +49,7 @@ export async function syncConnection(
             amountCents: row.amountCents,
             description: row.description,
             merchantRaw: row.merchantRaw,
+            merchantNormalized: row.merchantNormalized,
             pluggyCategory: row.pluggyCategory,
             updatedAt: new Date(),
           },

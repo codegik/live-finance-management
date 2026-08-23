@@ -1,9 +1,13 @@
 import { toSaoPauloDate } from '@/lib/domain/dates'
+import { normalizeMerchant } from '@/lib/domain/categorize'
 import { toCentavos } from '@/lib/domain/money'
 import type { NewTransaction } from '@/lib/db/schema'
 import type { PluggyTransaction } from './types'
 
 export function mapTransaction(remote: PluggyTransaction, accountId: string): NewTransaction {
+  const merchantRaw = remote.merchant?.name ?? remote.merchant?.businessName ?? null
+  const description = remote.descriptionRaw ?? remote.description
+
   return {
     accountId,
     pluggyTransactionId: remote.id,
@@ -13,8 +17,11 @@ export function mapTransaction(remote: PluggyTransaction, accountId: string): Ne
     // `amount` understates the spend, which is the failure this ledger exists
     // to avoid.
     amountCents: toCentavos(remote.amountInAccountCurrency ?? remote.amount, remote.type),
-    description: remote.descriptionRaw ?? remote.description,
-    merchantRaw: remote.merchant?.name ?? remote.merchant?.businessName ?? null,
+    description,
+    merchantRaw,
     pluggyCategory: remote.category ?? null,
+    // Prefer Pluggy's merchant name: it is already the clean brand, so it
+    // collapses branch variants that the descriptor alone would split.
+    merchantNormalized: normalizeMerchant(merchantRaw ?? description),
   }
 }
