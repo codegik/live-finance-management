@@ -57,6 +57,13 @@ app_pid() {
 ensure_env_file() {
   if [ -f "$ENV_FILE" ]; then
     ok ".env.local present"
+    # Added for a file written before auto-login existed, so an existing
+    # checkout gets the same one-command start as a fresh one. Only ever
+    # appended when absent, so setting it to false by hand sticks.
+    if ! grep -q '^LOCAL_AUTOLOGIN=' "$ENV_FILE"; then
+      printf 'LOCAL_AUTOLOGIN=true\n' >>"$ENV_FILE"
+      ok "Enabled local auto-login (LOCAL_AUTOLOGIN=true in .env.local)"
+    fi
     return
   fi
 
@@ -72,6 +79,7 @@ PLUGGY_CLIENT_SECRET=replace-with-your-pluggy-client-secret
 PLUGGY_API_URL=https://api.pluggy.ai
 PLUGGY_WEBHOOK_TOKEN=$(openssl rand -base64 32)
 CRON_SECRET=$(openssl rand -base64 32)
+LOCAL_AUTOLOGIN=true
 ENVEOF
   chmod 600 "$ENV_FILE"
   ok "Generated .env.local with fresh secrets"
@@ -192,6 +200,18 @@ seed_household() {
   "$ROOT/seed.sh" || warn "Seeding failed. Run ./seed.sh on its own to see why."
 }
 
+seed_demo() {
+  # Only when the household has NO transactions at all: a fresh clone opens on
+  # screens that can actually be read, instead of on four empty blocks. A boot
+  # must never invent financial figures on top of figures that already exist,
+  # so --demo-if-empty checks and does nothing if anything is there — real or
+  # previously generated. Ask for it explicitly with ./seed.sh --demo.
+  if [ "${SEED_SKIP:-false}" = true ] || [ "${DEMO_SKIP:-false}" = true ]; then
+    return
+  fi
+  "$ROOT/seed.sh" --demo-if-empty || warn "Demo data failed. Run ./seed.sh --demo to see why."
+}
+
 ensure_env_file
 [ -d "$ROOT/node_modules" ] || { info "Installing dependencies"; (cd "$ROOT" && pnpm install --frozen-lockfile); }
 start_db
@@ -199,6 +219,9 @@ run_migrations
 start_app
 printf '\n'
 seed_household
+
+printf '\n'
+seed_demo
 
 printf '\n'
 ok "Up. http://localhost:$APP_PORT"

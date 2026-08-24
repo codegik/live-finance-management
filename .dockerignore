@@ -19,9 +19,13 @@ docs
 *.md
 !README.md
 
-# Local scripts
+# Local scripts. seed.sh/seed.ts create the fixed-password owner@localhost
+# account and demo.ts writes invented salaries — none of it has any business
+# being reachable from a production image, even though each also refuses to
+# run against a non-local database. Two locks, because the cost is one line.
 start.sh
 stop.sh
 test.sh
 seed.sh
 seed.ts
+demo.ts

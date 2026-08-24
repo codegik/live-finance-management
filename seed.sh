@@ -14,6 +14,16 @@
 #   ./seed.sh --reset-password                   reset the default account's password
 #   ./seed.sh you@example.com 'new pw' --reset-password
 #
+#   ./seed.sh --demo         generate two years of local-only demo data
+#   ./seed.sh --demo-clear   remove it again, leaving real synced data alone
+#   ./seed.sh --demo-if-empty  generate it only if the household has no
+#                              transactions at all (what ./start.sh runs)
+#
+# The demo writes invented salaries and invented spending onto its own
+# connection, labelled as generated. It refuses to run unless DATABASE_URL
+# points at localhost and NODE_ENV is not production — on a real household's
+# database this would be indistinguishable from their own figures within a day.
+#
 # Defaults are owner@localhost / localdev12345 — deliberately fixed and
 # local-only, so the credentials are the same on every machine and every run.
 # Never use them anywhere reachable from the internet.
@@ -40,11 +50,15 @@ warn() { printf '%s   !%s %s\n' "$C_WARN" "$C_OFF" "$*" >&2; }
 die()  { printf '%sError:%s %s\n' "$C_ERR" "$C_OFF" "$*" >&2; exit 1; }
 
 RESET=false
+DEMO=''
 ARGS=()
 for arg in "$@"; do
   case "$arg" in
     --reset-password) RESET=true ;;
-    -h | --help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --demo) DEMO=seed ;;
+    --demo-clear) DEMO=clear ;;
+    --demo-if-empty) DEMO=if-empty ;;
+    -h | --help) sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     -*) die "Unknown option: $arg (try --help)" ;;
     *) ARGS+=("$arg") ;;
   esac
@@ -68,6 +82,35 @@ command -v pnpm >/dev/null 2>&1 || die "pnpm is not installed."
 [ -d "$ROOT/node_modules" ] || { info "Installing dependencies"; (cd "$ROOT" && pnpm install --frozen-lockfile); }
 
 cd "$ROOT"
+
+if [ -n "$DEMO" ]; then
+  case "$DEMO" in
+    seed)     info "Generating local-only demo data" ;;
+    clear)    info "Removing local-only demo data" ;;
+    if-empty) info "Generating demo data if the household has none" ;;
+  esac
+
+  set +e
+  DEMO_OUTPUT="$(DEMO_MODE="$DEMO" DATABASE_URL="$DATABASE_URL" pnpm exec tsx "$ROOT/demo.ts" 2>&1)"
+  DEMO_STATUS=$?
+  set -e
+
+  DEMO_RESULT="$(printf '%s\n' "$DEMO_OUTPUT" | sed -n 's/^demo-result: //p' | tail -1)"
+  printf '%s\n' "$DEMO_OUTPUT" | grep -v '^demo-result: ' || true
+
+  [ "$DEMO_STATUS" -eq 0 ] || die "Demo data failed. Is the database up? Try ./start.sh"
+
+  printf '\n'
+  case "$DEMO_RESULT" in
+    seeded)  ok "Demo data ready. Open http://localhost:${APP_PORT:-3000}/dashboard"
+             printf '     Remove it again with ./seed.sh --demo-clear\n' ;;
+    cleared) ok "Demo data removed." ;;
+    skipped) ok "Nothing to do." ;;
+    *)       warn "Could not determine the demo result; check the output above." ;;
+  esac
+  exit 0
+fi
+
 set +e
 OUTPUT="$(
   SEED_EMAIL="$SEED_EMAIL" \
