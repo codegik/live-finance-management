@@ -7,6 +7,7 @@ import type { Mailer } from '@/lib/email/resend'
 import type { PluggyClient } from '@/lib/pluggy/client'
 import { recategorize } from './categorize'
 import { refreshBudgetRoles } from './budget-roles'
+import { refreshInstallments } from './installments'
 import { syncConnection } from './transactions'
 
 export async function reconcileAll(
@@ -18,6 +19,7 @@ export async function reconcileAll(
   failed: string[]
   recategorized: number
   rolesCorrected: number
+  installmentsCorrected: number
   alerted: number
 }> {
   const all = await db
@@ -48,6 +50,7 @@ export async function reconcileAll(
 
   let recategorized = 0
   let rolesCorrected = 0
+  let installmentsCorrected = 0
   let alerted = 0
   for (const { householdId } of households) {
     try {
@@ -79,6 +82,14 @@ export async function reconcileAll(
       // recategorize produces no inbox count for this one to influence.
       const { changed: roled } = await refreshBudgetRoles(db, householdId)
       rolesCorrected += roled
+      // Same reasoning, and the same independence: this pass keys on
+      // installment_number/total, which nothing else writes. It is here
+      // rather than only at ingest because drizzle/0006 added those columns
+      // with no backfill and Pluggy never re-delivers an old transaction --
+      // so every row that predates the columns is NULL until something goes
+      // back and reads its descriptor. See lib/sync/installments.ts.
+      const { changed: parcels } = await refreshInstallments(db, householdId)
+      installmentsCorrected += parcels
       const { changed } = await recategorize(db, { householdId })
       recategorized += changed
     } catch (error) {
@@ -103,5 +114,5 @@ export async function reconcileAll(
     }
   }
 
-  return { succeeded, failed, recategorized, rolesCorrected, alerted }
+  return { succeeded, failed, recategorized, rolesCorrected, installmentsCorrected, alerted }
 }
