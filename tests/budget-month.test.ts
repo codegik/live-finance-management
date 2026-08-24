@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm'
-import { beforeEach, expect, it } from 'vitest'
+import { beforeEach, expect, it, vi } from 'vitest'
 import { hashPassword } from '@/lib/auth/password'
 import { createHousehold } from '@/lib/db/households'
 import { accounts, connections } from '@/lib/db/schema'
@@ -160,4 +160,50 @@ it('is a no-op the second time, so the nightly pass costs nothing', async () => 
 
   expect((await refreshBudgetMonths(db, householdId)).changed).toBe(1)
   expect((await refreshBudgetMonths(db, householdId)).changed).toBe(0)
+})
+
+// --- Saving the days in Conexões has to re-file the history, not wait for
+// --- the nightly reconcile.
+
+it('re-files the history the moment the household saves a closing day', async () => {
+  const session = await import('@/lib/auth/session')
+  const { db, householdId, cardId } = await seedHousehold()
+  // A card whose closing day was never known: Pluggy left it null on both of
+  // this household's real cards, so this is the ordinary case, not an edge.
+  await db.update(accounts).set({ dueDay: 15, closingDay: null }).where(eq(accounts.id, cardId))
+  await insertTransaction(db, cardId, {
+    description: 'ZAFFARI',
+    amountCents: 30_000,
+    date: '2026-08-17',
+    pluggyCategory: 'Groceries',
+  })
+  await refresh(db, householdId)
+
+  // With no closing day nothing shifts, so it sits in August.
+  expect(spend(await getMonthView(db, householdId, '2026-08', { now: NOW }))).toBe(30_000)
+
+  vi.spyOn(session, 'requireSession').mockResolvedValue({
+    id: crypto.randomUUID(),
+    email: 'inacio@example.com',
+    name: 'Inacio',
+    householdId,
+  })
+  vi.doMock('next/cache', () => ({ revalidatePath: () => {} }))
+  const { saveAccountDaysAction } = await import('@/app/(app)/settings/connections/actions')
+
+  const form = new FormData()
+  form.append('accountId', cardId)
+  form.append('dueDay', '15')
+  form.append('closingDay', '7')
+  const result = await saveAccountDaysAction({ error: null, message: null }, form)
+
+  expect(result.error).toBeNull()
+  // The message names what moved: a save that silently changes nothing on
+  // screen is indistinguishable from a save that failed.
+  expect(result.message).toMatch(/remanejad/)
+
+  // Bought on the 17th, closing on the 7th -> that bill is paid in September,
+  // and the household sees it there without waiting for the nightly pass.
+  expect(spend(await getMonthView(db, householdId, '2026-08', { now: NOW }))).toBe(0)
+  expect(spend(await getMonthView(db, householdId, '2026-09', { now: NOW }))).toBe(30_000)
 })

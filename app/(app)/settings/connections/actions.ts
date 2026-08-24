@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { requireSession } from '@/lib/auth/session'
 import { getDb } from '@/lib/db/client'
 import { deleteConnection, setAccountDays } from '@/lib/db/connections'
+import { refreshBudgetMonths } from '@/lib/sync/budget-month'
 import { SAVED_MESSAGE } from '../categories/state'
 import {
   type ConnectionState,
@@ -36,6 +37,13 @@ export async function removeConnectionAction(
   revalidatePath('/dashboard')
   revalidatePath('/ledger')
   return { error: null, message: REMOVED_MESSAGE }
+}
+
+/** Says what the save actually did, so a re-filed history is visible. */
+function refiledMessage(changed: number): string {
+  return changed === 1
+    ? 'Salvo. 1 lançamento foi remanejado para outro mês.'
+    : `Salvo. ${changed} lançamentos foram remanejados para outro mês.`
 }
 
 function parseDay(raw: FormDataEntryValue | null): number | null | 'INVALID' {
@@ -72,6 +80,31 @@ export async function saveAccountDaysAction(
   })
   if (!updated) return { error: UNKNOWN_ACCOUNT_ERROR, message: null }
 
+  // Re-file the history immediately, rather than leaving it to the nightly
+  // reconcile.
+  //
+  // The closing day decides which fatura a purchase lands on, and therefore
+  // which month every budgeting screen counts it in. Saving a corrected day
+  // and seeing the months not move is indistinguishable from the save having
+  // failed -- and the household's next move is to change the day again, which
+  // makes it worse. Waiting up to 24 hours for a number the user just typed to
+  // take effect is not a delay, it is a screen that disagrees with itself.
+  //
+  // Whole-household rather than this account alone: the pass is keyed on the
+  // household, every account resolves its own days inside it, and re-filing
+  // rows that did not move costs nothing (it writes only rows whose stored
+  // month is actually wrong).
+  const { changed } = await refreshBudgetMonths(getDb(), session.householdId)
+
   revalidatePath('/settings/connections')
-  return { error: null, message: SAVED_MESSAGE }
+  // Every screen that counts money by month is now wrong in the cache.
+  revalidatePath('/dashboard')
+  revalidatePath('/year')
+  revalidatePath('/budgets')
+  revalidatePath('/forward')
+
+  return {
+    error: null,
+    message: changed > 0 ? refiledMessage(changed) : SAVED_MESSAGE,
+  }
 }
