@@ -103,7 +103,13 @@ function Row({ row, stance }: { row: MonthRow; stance: MonthStance }) {
         {stance === 'CURRENT' && planned !== null && row.paceCents !== row.actualCents ? (
           <span>projeção {brl(row.paceCents)}</span>
         ) : null}
-        {row.committedCents > 0 ? <span>{brl(row.committedCents)} já comprometido</span> : null}
+        {/* "Committed" answers "how much of this month is already spoken
+            for", which is a question about spending. On a Receita row it read
+            as if a salary had been pre-spent, and on an investment as if a
+            transfer were an obligation. */}
+        {!MORE_IS_BETTER[row.group] && row.committedCents > 0 ? (
+          <span>{brl(row.committedCents)} já comprometido</span>
+        ) : null}
         {row.plannedFrom ? <span>plano herdado de {row.plannedFrom}</span> : null}
       </span>
     </li>

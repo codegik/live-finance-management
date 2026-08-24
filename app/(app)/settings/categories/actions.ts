@@ -2,12 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { requireSession } from '@/lib/auth/session'
-import {
-  archiveCategory,
-  createCategory,
-  renameCategory,
-  setCategoryGroup,
-} from '@/lib/db/categories'
+import { archiveCategory, createCategory, updateCategory } from '@/lib/db/categories'
 import { getDb } from '@/lib/db/client'
 import { CATEGORY_GROUPS, type CategoryGroup } from '@/lib/domain/seed-categories'
 import {
@@ -56,30 +51,13 @@ export async function createCategoryAction(
 }
 
 /**
- * Moves a category to another block.
+ * A category's name and block, saved together.
  *
- * Separate from renaming on purpose: moving a category into or out of Receita
- * changes which transactions its actuals are read from (GROUP_BUDGET_ROLE), so
- * it is a different act from correcting a spelling and deserves its own
- * button rather than riding along with one.
+ * One action for one row and one Save button. Splitting it in two -- which is
+ * how this screen first shipped -- put three buttons on every row and let a
+ * saved name land while a rejected block did not.
  */
-export async function setCategoryGroupAction(
-  _prev: SettingsState,
-  formData: FormData,
-): Promise<SettingsState> {
-  const session = await requireSession()
-  const categoryId = String(formData.get('categoryId') ?? '')
-  if (!categoryId) return { error: EMPTY_NAME_ERROR, message: null }
-
-  const group = parseGroup(String(formData.get('group') ?? ''))
-  if (!group) return { error: INVALID_GROUP_ERROR, message: null }
-
-  await setCategoryGroup(getDb(), session.householdId, categoryId, group)
-  revalidate()
-  return { error: null, message: SAVED_MESSAGE }
-}
-
-export async function renameCategoryAction(
+export async function saveCategoryAction(
   _prev: SettingsState,
   formData: FormData,
 ): Promise<SettingsState> {
@@ -88,7 +66,10 @@ export async function renameCategoryAction(
   const name = String(formData.get('name') ?? '').trim()
   if (!categoryId || !name) return { error: EMPTY_NAME_ERROR, message: null }
 
-  await renameCategory(getDb(), session.householdId, categoryId, name)
+  const group = parseGroup(String(formData.get('group') ?? ''))
+  if (!group) return { error: INVALID_GROUP_ERROR, message: null }
+
+  await updateCategory(getDb(), session.householdId, categoryId, { name, group })
   revalidate()
   return { error: null, message: SAVED_MESSAGE }
 }

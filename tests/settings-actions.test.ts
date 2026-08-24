@@ -17,7 +17,7 @@ vi.mock('@/lib/auth/session', () => ({
 }))
 vi.mock('next/cache', () => ({ revalidatePath: () => {} }))
 
-const { archiveCategoryAction, createCategoryAction, renameCategoryAction } = await import(
+const { archiveCategoryAction, createCategoryAction, saveCategoryAction } = await import(
   '@/app/(app)/settings/categories/actions'
 )
 const { createRuleAction, deleteRuleAction } = await import('@/app/(app)/settings/rules/actions')
@@ -71,11 +71,46 @@ it('renames a category without disturbing its seed key', async () => {
   const { db, householdId } = await seedHousehold()
   const [supermarket] = await listCategories(db, householdId)
 
-  await renameCategoryAction(EMPTY, form({ categoryId: supermarket.id, name: 'Mercado' }))
+  await saveCategoryAction(
+    EMPTY,
+    form({ categoryId: supermarket.id, name: 'Mercado', group: supermarket.group }),
+  )
 
   const [renamed] = await listCategories(db, householdId)
   expect(renamed.name).toBe('Mercado')
   expect(renamed.seedKey).toBe('supermarket')
+  expect(renamed.group).toBe(supermarket.group)
+})
+
+it('saves a rename and a move to another block in one write', async () => {
+  const { db, householdId } = await seedHousehold()
+  const [supermarket] = await listCategories(db, householdId)
+
+  await saveCategoryAction(
+    EMPTY,
+    form({ categoryId: supermarket.id, name: 'Mercado', group: 'DESPESA_FIXA' }),
+  )
+
+  const [saved] = await listCategories(db, householdId)
+  expect(saved.name).toBe('Mercado')
+  expect(saved.group).toBe('DESPESA_FIXA')
+})
+
+it('refuses a block that is not one of the four rather than 500ing on the enum', async () => {
+  const { db, householdId } = await seedHousehold()
+  const [supermarket] = await listCategories(db, householdId)
+
+  // A select is not a promise: the value arrives as a string from a form the
+  // browser is free to have edited, and Postgres rejects an unknown enum with
+  // an error no catch arm here would match.
+  const result = await saveCategoryAction(
+    EMPTY,
+    form({ categoryId: supermarket.id, name: 'Mercado', group: 'DESPESA_IMAGINARIA' }),
+  )
+
+  expect(result.error).not.toBeNull()
+  const [unchanged] = await listCategories(db, householdId)
+  expect(unchanged.name).toBe(supermarket.name)
 })
 
 it('archives a category so it leaves the picker but keeps its history', async () => {

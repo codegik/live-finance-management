@@ -190,7 +190,10 @@ a:hover { text-decoration: underline; }
 
 input, select, button, textarea { font: inherit; color: inherit; }
 
-input, select, textarea {
+/* Checkboxes and radios are excluded on purpose: the padding and the surface
+   fill below are the anatomy of a text field, and on a native tick box they
+   only inflate the hit target into a grey slab. */
+input:not([type='checkbox']):not([type='radio']), select, textarea {
   padding: 0.5rem 0.6rem;
   background: var(--surface-2);
   border: 1px solid var(--border);
@@ -222,6 +225,30 @@ button[type='submit']:hover { filter: brightness(1.08); }
 
 form { display: grid; gap: var(--gap); }
 label { display: grid; gap: 0.3rem; font-size: 0.85rem; color: var(--text-dim); }
+
+/* A tick box belongs BESIDE its caption, never above it. The stacked grid
+   above is the right shape for a field with a caption over it; applied to a
+   checkbox it hands the box its own full-width row and stretches it, which is
+   how the inbox's "always categorize" toggle ended up as a wide box floating
+   over its own words. Fixed here rather than at the call site so the next
+   checkbox anyone adds is not born with the same defect. */
+label:has(> input[type='checkbox']),
+label:has(> input[type='radio']) {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* The half of the fix that does not depend on :has -- a box that cannot
+   stretch is at worst mis-stacked, never floating and full-width. */
+input[type='checkbox'], input[type='radio'] {
+  flex: none;
+  justify-self: start;
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  accent-color: var(--accent);
+}
 
 .btn-quiet {
   padding: 0.32rem 0.6rem;
@@ -501,17 +528,43 @@ label { display: grid; gap: 0.3rem; font-size: 0.85rem; color: var(--text-dim); 
 
 .inbox__group {
   display: grid;
-  gap: 0.6rem;
-  padding: 0.85rem 1rem;
+  gap: 0.55rem;
+  padding: 0.8rem 1rem 0.85rem;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   margin-bottom: 0.6rem;
 }
 
-.inbox__group-header { display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; }
+.inbox__group-header { display: flex; justify-content: space-between; align-items: baseline; gap: 0.75rem; }
+.inbox__group-header h2 { font-size: 0.95rem; overflow-wrap: anywhere; }
+.inbox__group-meta { flex: none; font-family: var(--font-num); font-size: 0.78rem; color: var(--text-dim); }
 
-.inbox__rule { display: grid; gap: 0.4rem; padding: 0.6rem; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+/* Category and the button on one line: picking a category IS the whole
+   action here, and a submit sitting on its own row underneath reads as a
+   second, separate decision. */
+.inbox__assign { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.inbox__assign select { flex: 1 1 14rem; min-width: 0; }
+
+/* A hairline, not a boxed panel. The rule is a footnote to the assignment
+   above it -- given its own bordered card it competed with the card it sits
+   inside. */
+.inbox__rule { display: grid; gap: 0.35rem; padding-top: 0.5rem; border-top: 1px solid var(--border); }
+.inbox__rule-toggle { color: var(--text); }
+
+/* Indented to the toggle's caption, because these fields only exist while
+   the toggle is on and should read as belonging to it. */
+.inbox__rule-fields {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  padding-left: 1.5rem;
+  font-size: 0.82rem;
+  color: var(--text-dim);
+}
+.inbox__rule-fields select, .inbox__rule-fields input { padding: 0.28rem 0.45rem; font-size: 0.82rem; }
+.inbox__rule-fields input { flex: 1 1 10rem; min-width: 7rem; }
 
 /* -------------------------------------------------------------- settings -- */
 
@@ -606,22 +659,89 @@ label { display: grid; gap: 0.3rem; font-size: 0.85rem; color: var(--text-dim); 
   .plan-save { bottom: 3.5rem; }
 }
 
-/* The create form is a row of fields, not a stack: three stacked labels above
-   a long list read as the start of the list rather than as a way in. */
-.settings__create {
-  display: flex;
-  align-items: flex-end;
-  flex-wrap: wrap;
-  gap: 0.6rem;
-  padding: 0.9rem 1rem;
+/* ---------------------------------------------------------- categories -- */
+
+/* One line, not three stacked labels: a create form that looks like a list
+   item reads as the start of the list rather than as a way into it. */
+.cat-new {
+  display: grid;
+  grid-template-columns: 1fr 14rem auto;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem;
   margin-bottom: 1.25rem;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
 }
-.settings__create label { flex: 1 1 12rem; }
+
+.cat-row { border-bottom: 1px solid var(--border); }
+.cat-row:last-child { border-bottom: 0; }
+
+.cat-row__form {
+  display: grid;
+  grid-template-columns: 1fr 14rem auto;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.75rem;
+  background: var(--surface);
+}
+.cat-row:hover .cat-row__form { background: var(--surface-2); }
+
+/* The name reads as text until you go to change it. A row of twenty boxed
+   inputs is a form; a row of twenty names is a list, which is what this is
+   most of the time. */
+.cat-row__name {
+  background: transparent;
+  border-color: transparent;
+  font-size: 0.9rem;
+}
+.cat-row:hover .cat-row__name,
+.cat-row__name:focus { background: var(--surface-2); border-color: var(--border); }
+.cat-row__name:focus { background: var(--surface-3); }
+
+.cat-row__form select {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}
+.cat-row:hover .cat-row__form select { border-color: var(--border); color: var(--text); }
+
+.cat-row__actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 7.5rem;
+}
+
+/* Archiving is always available but never advertised: it appears on the row
+   you are actually pointing at. */
+.cat-row__archive { opacity: 0; }
+.cat-row:hover .cat-row__archive,
+.cat-row__archive:focus-visible { opacity: 1; }
+
+.btn-danger {
+  padding: 0.32rem 0.6rem;
+  background: var(--neg-dim);
+  border: 1px solid var(--neg);
+  border-radius: var(--radius-sm);
+  color: var(--neg);
+  font-size: 0.8rem;
+}
+.btn-danger:hover { background: var(--neg); color: #0b0406; }
+
+.cat-row__form .form__error,
+.cat-row__form .form__message { grid-column: 1 / -1; margin: 0; }
 
 /* Inside a block the rows already have the block's border around them. */
 .settings__list--flush { gap: 0; }
-.settings__list--flush .settings__row { border: 0; border-bottom: 1px solid var(--border); border-radius: 0; }
-.settings__list--flush .settings__row:last-child { border-bottom: 0; }
+
+@media (max-width: 52rem) {
+  .cat-new, .cat-row__form { grid-template-columns: 1fr; }
+  .cat-row__archive { opacity: 1; }
+  .cat-row__name, .cat-row__form select { background: var(--surface-2); border-color: var(--border); }
+}
+
+.signin__local { margin: 0 0 1rem; }

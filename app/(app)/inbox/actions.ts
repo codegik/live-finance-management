@@ -14,6 +14,11 @@ import {
   UNKNOWN_CATEGORY_ERROR,
 } from './state'
 
+/** "1 lançamento movido", not "1 lançamentos movidos". */
+function movedLabel(changed: number): string {
+  return changed === 1 ? '1 lançamento movido' : `${changed} lançamentos movidos`
+}
+
 export async function assignGroupAction(
   _prev: AssignState,
   formData: FormData,
@@ -42,7 +47,7 @@ export async function assignGroupAction(
       })
       revalidatePath('/inbox')
       revalidatePath('/ledger')
-      return { error: null, message: `${ASSIGNED_MESSAGE} — ${changed} transactions moved.` }
+      return { error: null, message: `${ASSIGNED_MESSAGE} — ${movedLabel(changed)}.` }
     } catch (error) {
       // normalizeMerchant strips punctuation before checking emptiness, so a
       // pattern like '***' passes the trim() guard above but still reduces
@@ -77,7 +82,7 @@ export async function assignGroupAction(
     const { changed } = await setCategoryForMerchant(db, session.householdId, merchant, categoryId)
     revalidatePath('/inbox')
     revalidatePath('/ledger')
-    return { error: null, message: `${ASSIGNED_MESSAGE} — ${changed} transactions moved.` }
+    return { error: null, message: `${ASSIGNED_MESSAGE} — ${movedLabel(changed)}.` }
   } catch (error) {
     if (error instanceof Error && error.message === 'UNKNOWN_CATEGORY') {
       return { error: UNKNOWN_CATEGORY_ERROR, message: null }

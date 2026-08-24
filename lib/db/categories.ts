@@ -52,34 +52,28 @@ export async function createCategory(
 }
 
 /**
- * Moves a category to another block of the month view.
+ * A category's editable fields, written together.
  *
- * This is not cosmetic: GROUP_BUDGET_ROLE means moving a category into or out
- * of RECEITA changes which transactions its actuals are read from. A category
- * carrying spend that is moved to Receita will read zero until income rows
- * point at it -- correct, but worth knowing before the number is disbelieved.
+ * One function and one UPDATE rather than a rename and a move, because the
+ * screen edits them on one row with one button: two writes would let a saved
+ * name land while a rejected block did not, and leave the row showing a state
+ * that was never stored.
+ *
+ * Changing `group` is not cosmetic. GROUP_BUDGET_ROLE means moving a category
+ * into or out of RECEITA changes which transactions its actuals are read
+ * from, so a category carrying spend that is moved to Receita reads zero
+ * until income rows point at it -- correct, but worth knowing before the
+ * number is disbelieved.
  */
-export async function setCategoryGroup(
+export async function updateCategory(
   exec: Executor,
   householdId: string,
   categoryId: string,
-  group: CategoryGroup,
+  fields: { name: string; group: CategoryGroup },
 ): Promise<void> {
   await exec
     .update(categories)
-    .set({ group })
-    .where(and(eq(categories.id, categoryId), eq(categories.householdId, householdId)))
-}
-
-export async function renameCategory(
-  exec: Executor,
-  householdId: string,
-  categoryId: string,
-  name: string,
-): Promise<void> {
-  await exec
-    .update(categories)
-    .set({ name: name.trim() })
+    .set({ name: fields.name.trim(), group: fields.group })
     .where(and(eq(categories.id, categoryId), eq(categories.householdId, householdId)))
 }
 

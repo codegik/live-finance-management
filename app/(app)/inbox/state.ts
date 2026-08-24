@@ -4,9 +4,9 @@
  */
 export type AssignState = { error: string | null; message: string | null }
 
-export const ASSIGNED_MESSAGE = 'Categorized'
-export const MISSING_FIELD_ERROR = 'Choose a category first.'
-export const EMPTY_PATTERN_ERROR = 'That pattern has no letters or numbers to match on.'
+export const ASSIGNED_MESSAGE = 'Categorizado'
+export const MISSING_FIELD_ERROR = 'Escolha uma categoria primeiro.'
+export const EMPTY_PATTERN_ERROR = 'Esse texto não tem letras nem números para comparar.'
 
 // Shared with the settings screens: a forged categoryId and a duplicate rule
 // map to the same friendly message wherever they are caught. The inbox can

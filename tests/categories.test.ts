@@ -4,7 +4,7 @@ import {
   archiveCategory,
   createCategory,
   listCategories,
-  renameCategory,
+  updateCategory,
 } from '@/lib/db/categories'
 import { createHousehold } from '@/lib/db/households'
 import { SEED_CATEGORIES } from '@/lib/domain/seed-categories'
@@ -39,7 +39,7 @@ it('keeps the seed key when a seeded category is renamed', async () => {
   const { db, householdId } = await seedHousehold()
   const [supermarket] = await listCategories(db, householdId)
 
-  await renameCategory(db, householdId, supermarket.id, 'Mercado')
+  await updateCategory(db, householdId, supermarket.id, { name: 'Mercado', group: supermarket.group })
 
   const [renamed] = await listCategories(db, householdId)
   expect(renamed.name).toBe('Mercado')
@@ -75,7 +75,7 @@ it('scopes every category operation to its household', async () => {
   const [mine] = await listCategories(db, householdId)
 
   // A category id from another household must be inert, not merely unauthorized.
-  await renameCategory(db, otherId, mine.id, 'Hijacked')
+  await updateCategory(db, otherId, mine.id, { name: 'Hijacked', group: mine.group })
   await archiveCategory(db, otherId, mine.id)
 
   const [unchanged] = await listCategories(db, householdId)
