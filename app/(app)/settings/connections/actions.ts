@@ -101,7 +101,6 @@ export async function saveAccountDaysAction(
   revalidatePath('/dashboard')
   revalidatePath('/year')
   revalidatePath('/budgets')
-  revalidatePath('/forward')
 
   return {
     error: null,

@@ -115,6 +115,5 @@ export async function saveBudgetsAction(
   revalidatePath('/budgets')
   revalidatePath('/dashboard')
   revalidatePath('/year')
-  revalidatePath('/forward')
   return { error: null, message: SAVED_MESSAGE }
 }

@@ -17,13 +17,14 @@ import { parseInstallment } from '@/lib/domain/installments'
  * The parser was never at fault; it reads all of those correctly. Only the
  * backfill was missing. Two things break without it, and both are silent:
  *
- *   - The forward view is built entirely on `installment_total IS NOT NULL`,
- *     so "Comprometido" renders empty over a household with three years of
- *     committed parcelas.
  *   - pace() adds instalments at face value and extrapolates everything else.
  *     An unflagged parcela dated earlier this month becomes a daily rate --
  *     the "one R$1,147 car instalment seen on the 10th projects R$3,556 by
  *     month end" false alarm that lib/domain/budget.ts exists to prevent.
+ *   - lib/domain/billing.ts skips the paying-month shift for instalments 2..N,
+ *     because the connector already dates those by the fatura they belong to.
+ *     Unflagged, every parcela is shifted as if it were an ordinary purchase
+ *     and lands a month late.
  *
  * Runs nightly rather than once, for the same reason refreshBudgetRoles does:
  * an improved parser then lands without a migration. It also CLEARS the

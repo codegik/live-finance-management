@@ -102,9 +102,9 @@ export async function getBudgetEditorView(
       ? [...allMonths].map((m) => toActualCents(months.get(m) ?? 0, category.group))
       : []
 
-    // The same carry-forward the dashboard and the forward view read, from
-    // the same function: a second implementation here is how the editor and
-    // the dashboard start disagreeing about which month a budget came from.
+    // The same carry-forward the month and year screens read, from the same
+    // function: a second implementation here is how the editor and the month
+    // view start disagreeing about which month a budget came from.
     const inherited = resolveBudget(budgetsByCategory.get(category.id) ?? [], period)
 
     return {

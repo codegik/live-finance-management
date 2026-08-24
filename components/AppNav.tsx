@@ -25,7 +25,6 @@ const SECTIONS: { title: string; items: Item[] }[] = [
       { href: '/dashboard', label: 'Mês' },
       { href: '/year', label: 'Ano' },
       { href: '/budgets', label: 'Planejar' },
-      { href: '/forward', label: 'Comprometido' },
     ],
   },
   {

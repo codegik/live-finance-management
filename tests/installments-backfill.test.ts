@@ -3,8 +3,9 @@ import { beforeEach, expect, it } from 'vitest'
 import { hashPassword } from '@/lib/auth/password'
 import { createHousehold } from '@/lib/db/households'
 import { connections, transactions } from '@/lib/db/schema'
+import { recategorize } from '@/lib/sync/categorize'
 import { refreshInstallments } from '@/lib/sync/installments'
-import { getForwardView } from '@/lib/views/forward'
+import { getMonthView } from '@/lib/views/month'
 import { resetDb, testDb, useTestEnv } from './helpers/db'
 import { insertTransaction, seedAccount } from './helpers/transactions'
 
@@ -94,33 +95,40 @@ it('reads the descriptors a real Itau statement actually emits', async () => {
   }
 })
 
-it('fills in what "Comprometido" is built from', async () => {
+it('stops pace extrapolating a parcela as if it were a daily rate', async () => {
   const { db, householdId, accountId } = await seedHousehold()
-  for (const [n, date] of [
-    [6, '2026-09-15'],
-    [7, '2026-10-15'],
-    [8, '2026-11-16'],
-  ] as const) {
-    await unflag(
-      db,
-      await insertTransaction(db, accountId, {
-        description: `AUTO MECANICA BOA 0${n}/10`,
-        amountCents: 114_709,
-        date,
-        pluggyCategory: 'Vehicle maintenance',
-      }),
-    )
-  }
+  // A single large instalment, dated early in a month that is still running.
+  await unflag(
+    db,
+    await insertTransaction(db, accountId, {
+      description: 'AUTO MECANICA BOA 05/10',
+      amountCents: 114_709,
+      date: '2026-08-06',
+      pluggyCategory: 'Vehicle maintenance',
+    }),
+  )
+  await recategorize(db, { householdId })
 
-  // getForwardView filters on installment_total IS NOT NULL, so before the
-  // pass the screen is empty over a household with real commitments.
-  const before = await getForwardView(db, householdId, { now: NOW })
-  expect(before.every((m) => m.totalCommittedCents === 0)).toBe(true)
+  // Read on the 10th, so 10 days of 31 have elapsed. Unflagged, the instalment
+  // is variable spending and pace treats it as a rate: R$1.147,09 over 10 days
+  // projects R$3.555,98 by month end -- three times money that was never going
+  // to be spent again.
+  const onTheTenth = { now: new Date('2026-08-10T15:00:00.000Z') }
+  const before = await getMonthView(db, householdId, '2026-08', onTheTenth)
+  const beforeRow = before.groups
+    .flatMap((g) => g.rows)
+    .find((r) => r.categoryName === 'Manutenção de carro')!
+  expect(beforeRow.paceCents).toBeGreaterThan(300_000)
 
   await refreshInstallments(db, householdId)
 
-  const after = await getForwardView(db, householdId, { now: NOW })
-  expect(after.filter((m) => m.totalCommittedCents > 0)).toHaveLength(3)
+  // Flagged, it is a known list and is added at face value.
+  const after = await getMonthView(db, householdId, '2026-08', onTheTenth)
+  const afterRow = after.groups
+    .flatMap((g) => g.rows)
+    .find((r) => r.categoryName === 'Manutenção de carro')!
+  expect(afterRow.paceCents).toBe(114_709)
+  expect(afterRow.committedCents).toBe(114_709)
 })
 
 it('clears a stored parse that the descriptor no longer supports', async () => {
@@ -133,8 +141,9 @@ it('clears a stored parse that the descriptor no longer supports', async () => {
 
   const { changed } = await refreshInstallments(db, householdId)
 
-  // Left in place, this is a phantom commitment: the forward view would show
-  // money the household never agreed to pay.
+  // Left in place, this is a phantom commitment: pace would stop extrapolating
+  // an ordinary purchase, and the paying-month shift would skip it as though
+  // the connector had already billed it.
   expect(changed).toBe(1)
   const [row] = await db.select().from(transactions).where(eq(transactions.id, id))
   expect(row.installmentTotal).toBeNull()

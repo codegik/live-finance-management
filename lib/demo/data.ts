@@ -238,9 +238,9 @@ export const DEMO_UNCATEGORIZED = [
  * An instalment plan: money already committed to months that have not
  * happened yet.
  *
- * Without at least one of these, "Comprometido" is empty and the pace
- * calculation has nothing to exercise -- and both exist precisely to handle
- * this case, so a demo without them hides the two features hardest to get
+ * Without at least one of these, neither pace nor the paying-month shift has
+ * anything to exercise -- and both treat an instalment differently from an
+ * ordinary purchase, so a demo without them hides the two rules hardest to get
  * right.
  */
 export const DEMO_INSTALMENTS = [

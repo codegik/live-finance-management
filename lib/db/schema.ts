@@ -259,8 +259,9 @@ export const transactions = pgTable(
     // a budget. See lib/domain/budget-role.ts.
     budgetRole: budgetRoleEnum('budget_role').notNull().default('SPEND'),
     // Parsed from the descriptor at ingest. Both set or both null. A row with
-    // these is money already committed, which is what pace and the forward
-    // view are built on.
+    // these is money already committed: pace adds it at face value instead of
+    // extrapolating it, and lib/domain/billing.ts skips its paying-month shift
+    // because the connector already dates instalments 2..N by their fatura.
     installmentNumber: integer('installment_number'),
     installmentTotal: integer('installment_total'),
     // The month the household actually pays this, which is the month it
