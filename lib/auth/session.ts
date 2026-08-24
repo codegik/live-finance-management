@@ -1,8 +1,12 @@
+import { and, eq } from 'drizzle-orm'
 import { redirect } from 'next/navigation'
 import NextAuth, { type Session, type User } from 'next-auth'
 import type { JWT } from 'next-auth/jwt'
 import Credentials from 'next-auth/providers/credentials'
+import type { Executor } from '@/lib/db/client'
 import { getDb } from '@/lib/db/client'
+import { users } from '@/lib/db/schema'
+import { localAutoLogin } from '@/lib/demo/autologin'
 import { authorizeCredentials, type SessionUser } from './config'
 
 export function attachHouseholdToToken({
@@ -55,12 +59,49 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   },
 })
 
+/**
+ * Whether the signed-in identity still exists as claimed.
+ *
+ * The household id is written into the JWT at sign-in and never revisited, so
+ * a token outlives the row it names: after the database is reset and reseeded
+ * the browser still holds a valid, correctly-signed token pointing at a
+ * household that is gone. The user is then authenticated as a ghost -- every
+ * query is scoped to a household with nothing in it, so /ledger renders "No
+ * transactions yet. Connect a card to get started." on a database holding
+ * three thousand of them.
+ *
+ * That is the worst failure available here: it is indistinguishable from
+ * having no data, so it sends someone looking for a bug in their data rather
+ * than signing in again. Cheap to prevent -- one lookup on the user's primary
+ * key -- and the alternative is a screen that lies.
+ */
+export async function sessionIsStillValid(
+  exec: Executor,
+  userId: string,
+  householdId: string,
+): Promise<boolean> {
+  const rows = await exec
+    .select({ id: users.id })
+    .from(users)
+    .where(and(eq(users.id, userId), eq(users.householdId, householdId)))
+    .limit(1)
+  return rows.length > 0
+}
+
 export async function requireSession(): Promise<SessionUser> {
   const session = await auth()
   const user = session?.user
-  if (!user?.householdId) throw new Error('UNAUTHENTICATED')
+  if (!user?.householdId || !user.id) throw new Error('UNAUTHENTICATED')
+
+  if (!(await sessionIsStillValid(getDb(), user.id, user.householdId))) {
+    // Not an error state to report -- the token is simply stale. Sending it
+    // back through sign-in issues a fresh one naming the household that now
+    // exists.
+    throw new Error('UNAUTHENTICATED')
+  }
+
   return {
-    id: user.id!,
+    id: user.id,
     email: user.email!,
     name: user.name ?? '',
     householdId: user.householdId,
@@ -76,7 +117,12 @@ export async function requireSession(): Promise<SessionUser> {
  */
 export function toSignInOrThrow(error: unknown): never {
   if (error instanceof Error && error.message === 'UNAUTHENTICATED') {
-    redirect('/signin')
+    // Locally, hand off to the route that signs in as the seeded household
+    // rather than to a form. Reaching a protected page signed out is the
+    // common case after a database reset, and "log in again" is not the point
+    // of a local environment. localAutoLogin() is null everywhere else, so
+    // every other deployment still goes to /signin exactly as before.
+    redirect(localAutoLogin() ? '/dev-login' : '/signin')
   }
   throw error
 }
