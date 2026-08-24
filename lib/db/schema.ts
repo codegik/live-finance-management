@@ -65,6 +65,20 @@ export const ruleMatchTypeEnum = pgEnum('rule_match_type', ['EXACT', 'CONTAINS']
 
 export const budgetRoleEnum = pgEnum('budget_role', ['SPEND', 'TRANSFER', 'INCOME'])
 
+/**
+ * The block a category belongs to on the household's month view.
+ *
+ * The four blocks are the ones the household already keeps by hand. The group
+ * also decides which budget role a category's actuals are read from: RECEITA
+ * reads INCOME rows, every other group reads SPEND. See lib/views/month.ts.
+ */
+export const categoryGroupEnum = pgEnum('category_group', [
+  'RECEITA',
+  'INVESTIMENTO',
+  'DESPESA_FIXA',
+  'DESPESA_VARIAVEL',
+])
+
 export const connections = pgTable(
   'connection',
   {
@@ -118,6 +132,10 @@ export const categories = pgTable(
       .notNull()
       .references(() => households.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
+    // Which block of the month view this category is totalled under. Defaults
+    // to variable spending for the same reason budget_role defaults to SPEND:
+    // an unclassified row stays where the household will see it.
+    group: categoryGroupEnum('group').notNull().default('DESPESA_VARIAVEL'),
     // Null for household-created categories. Postgres treats NULLs as
     // distinct in a unique index, so many null-keyed rows coexist happily.
     seedKey: text('seed_key'),

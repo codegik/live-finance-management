@@ -13,10 +13,13 @@ import { getCategorySpend } from '@/lib/views/spend'
 /**
  * Evaluate one household's budgets and notify it of anything newly crossed.
  *
- * Rows are composed exactly as getDashboardView composes them -- the same
- * spend query, the same category list, the same carry-forward resolution --
- * so the mail and the screen cannot disagree about what a category is or what
- * it is budgeted at.
+ * Rows are composed exactly as getMonthView composes them -- the same spend
+ * query, the same category list, the same carry-forward resolution -- so the
+ * mail and the screen cannot disagree about what a category is or what it is
+ * budgeted at. It deliberately does not call getMonthView itself: alerts are
+ * about spend against a cap, and a view that also carries income, four block
+ * subtotals and a connection health check would be answering a much larger
+ * question than an alert asks.
  *
  * THROWS if the send fails. That is the point: `fired_at` is written only
  * after a successful delivery, so a rejection leaves the threshold armed and

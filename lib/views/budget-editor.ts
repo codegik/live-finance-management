@@ -1,4 +1,4 @@
-import { and, eq, lt, sql } from 'drizzle-orm'
+import { and, eq, inArray, lt, sql } from 'drizzle-orm'
 import { listBudgets } from '@/lib/db/budgets'
 import { listCategories } from '@/lib/db/categories'
 import type { Db } from '@/lib/db/client'
@@ -10,10 +10,17 @@ import {
   resolveBudget,
 } from '@/lib/domain/budget'
 import { saoPauloPeriod } from '@/lib/domain/dates'
+import {
+  type CategoryGroup,
+  GROUP_BUDGET_ROLE,
+  toActualCents,
+} from '@/lib/domain/seed-categories'
 
 export type BudgetEditorRow = {
   categoryId: string
   categoryName: string
+  /** Which block of the month view this row plans for. */
+  group: CategoryGroup
   /** The amount in force for this period, inherited or explicit. */
   amountCents: number | null
   /** The period an inherited amount came from, or null if it is this month's own. */
@@ -42,6 +49,7 @@ export async function getBudgetEditorView(
     db
       .select({
         categoryId: transactions.categoryId,
+        budgetRole: transactions.budgetRole,
         month: sql<string>`to_char(${transactions.date}, 'YYYY-MM')`,
         total: sql<string>`sum(${transactions.amountCents})`,
       })
@@ -51,22 +59,34 @@ export async function getBudgetEditorView(
       .where(
         and(
           eq(connections.householdId, householdId),
-          eq(transactions.budgetRole, 'SPEND'),
+          // INCOME as well as SPEND: a Receita category read from spend rows
+          // alone would offer no suggestion at all, and planning income by
+          // hand is the part of the spreadsheet this screen exists to
+          // replace.
+          inArray(transactions.budgetRole, ['SPEND', 'INCOME']),
           lt(transactions.date, currentMonthStart),
         ),
       )
-      .groupBy(transactions.categoryId, sql`to_char(${transactions.date}, 'YYYY-MM')`),
+      .groupBy(
+        transactions.categoryId,
+        transactions.budgetRole,
+        sql`to_char(${transactions.date}, 'YYYY-MM')`,
+      ),
   ])
 
   // Every month the household has any history in, so a category spent in
   // three months of nine is not budgeted at the average of its active months.
   const allMonths = new Set(history.map((h) => h.month))
+  // Keyed on role as well as category, so a Receita row is suggested from
+  // income and a spending row from spend -- never from whichever of the two
+  // happened to be written last.
   const totalsByCategory = new Map<string, Map<string, number>>()
   for (const row of history) {
     if (!row.categoryId) continue
-    const months = totalsByCategory.get(row.categoryId) ?? new Map<string, number>()
+    const key = `${row.categoryId}:${row.budgetRole}`
+    const months = totalsByCategory.get(key) ?? new Map<string, number>()
     months.set(row.month, Number(row.total))
-    totalsByCategory.set(row.categoryId, months)
+    totalsByCategory.set(key, months)
   }
 
   const budgetsByCategory = groupBudgetsByCategory(budgetRows)
@@ -74,8 +94,12 @@ export async function getBudgetEditorView(
   const { start } = monthBounds(period)
 
   const rows = categories.map((category) => {
-    const months = totalsByCategory.get(category.id)
-    const zeroFilled = months ? [...allMonths].map((m) => months.get(m) ?? 0) : []
+    const months = totalsByCategory.get(`${category.id}:${GROUP_BUDGET_ROLE[category.group]}`)
+    // Sign-flipped for Receita, the same way the month view flips it: a
+    // suggestion of -R$ 49.550,00 is not a suggestion.
+    const zeroFilled = months
+      ? [...allMonths].map((m) => toActualCents(months.get(m) ?? 0, category.group))
+      : []
 
     // The same carry-forward the dashboard and the forward view read, from
     // the same function: a second implementation here is how the editor and
@@ -85,6 +109,7 @@ export async function getBudgetEditorView(
     return {
       categoryId: category.id,
       categoryName: category.name,
+      group: category.group,
       amountCents: inherited ? inherited.amountCents : null,
       inheritedFrom:
         inherited && inherited.periodMonth !== start ? inherited.periodMonth.slice(0, 7) : null,

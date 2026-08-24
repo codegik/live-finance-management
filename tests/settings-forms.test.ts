@@ -43,7 +43,12 @@ const PAGES = [
 const CLIENT_FORMS: { path: string; actions: string[] }[] = [
   {
     path: 'app/(app)/settings/categories/CategoryForms.tsx',
-    actions: ['createCategoryAction', 'renameCategoryAction', 'archiveCategoryAction'],
+    actions: [
+      'createCategoryAction',
+      'renameCategoryAction',
+      'setCategoryGroupAction',
+      'archiveCategoryAction',
+    ],
   },
   {
     path: 'app/(app)/settings/rules/RuleForms.tsx',
@@ -113,6 +118,7 @@ it('keeps the (prevState, formData) signature the client forms depend on', async
   const everyAction = [
     categories.createCategoryAction,
     categories.renameCategoryAction,
+    categories.setCategoryGroupAction,
     categories.archiveCategoryAction,
     rules.createRuleAction,
     rules.deleteRuleAction,

@@ -1,11 +1,18 @@
-import { and, eq, gte, lte, sql } from 'drizzle-orm'
+import { and, eq, gte, inArray, lte, sql } from 'drizzle-orm'
 import type { Db } from '@/lib/db/client'
 import { accounts, connections, transactions } from '@/lib/db/schema'
+import type { BudgetRole } from '@/lib/domain/budget-role'
 import { monthBounds } from '@/lib/domain/budget'
 
 export type CategorySpend = {
   /** Null for the uncategorized bucket. */
   categoryId: string | null
+  /**
+   * Which role these sums came from. Meaningful only when the caller asked
+   * for more than one: with the default `['SPEND']` there is exactly one row
+   * per category and every caller that predates the month view ignores it.
+   */
+  budgetRole: BudgetRole
   spentCents: number
   count: number
   variableCents: number
@@ -23,18 +30,28 @@ export type CategorySpend = {
  * `today` splits variable from committed spend and is the caller's, not this
  * function's, so a test can fix the clock. Only the dashboard's pace uses the
  * split; alerts use `spentCents`.
+ *
+ * `roles` defaults to SPEND alone, which is what a budget is a cap on. The
+ * month view passes INCOME as well so the Receita block has something to
+ * total -- and because a second query for income would be the drift this
+ * function exists to prevent. Rows are grouped by role as well as category so
+ * that a category holding both never has the two silently added together:
+ * they have opposite signs (lib/domain/money.ts) and would cancel out.
  */
 export async function getCategorySpend(
   db: Db,
   householdId: string,
   period: string,
   today: string,
+  opts: { roles?: readonly BudgetRole[] } = {},
 ): Promise<CategorySpend[]> {
+  const roles = opts.roles ?? (['SPEND'] as const)
   const { start, end } = monthBounds(period)
 
   const rows = await db
     .select({
       categoryId: transactions.categoryId,
+      budgetRole: transactions.budgetRole,
       // count()/sum() arrive as strings from the driver; Number() at the
       // boundary keeps centavos integral in JS.
       spent: sql<string>`sum(${transactions.amountCents})`,
@@ -54,16 +71,19 @@ export async function getCategorySpend(
     .where(
       and(
         eq(connections.householdId, householdId),
-        // Only spending counts: not invoice payments, not salary.
-        eq(transactions.budgetRole, 'SPEND'),
+        // Invoice payments and transfers between the household's own accounts
+        // are never in scope: they are the same money counted twice. Salary
+        // is in scope only when the caller asks for it by name.
+        inArray(transactions.budgetRole, [...roles]),
         gte(transactions.date, start),
         lte(transactions.date, end),
       ),
     )
-    .groupBy(transactions.categoryId)
+    .groupBy(transactions.categoryId, transactions.budgetRole)
 
   return rows.map((row) => ({
     categoryId: row.categoryId,
+    budgetRole: row.budgetRole,
     spentCents: Number(row.spent),
     count: Number(row.count),
     variableCents: Number(row.variable),

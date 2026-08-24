@@ -12,8 +12,15 @@ export default async function InboxPage() {
   return (
     <main className="page">
       <header className="page__header">
-        <h1>Inbox</h1>
-        <span>{view.totalCount} uncategorized</span>
+        <div className="page__title">
+          <h1>A categorizar</h1>
+          <span className="page__sub">
+            Categorizar aqui cria uma regra: o mesmo estabelecimento não volta a aparecer.
+          </span>
+        </div>
+        {view.totalCount > 0 ? (
+          <span className="badge">{view.totalCount} pendentes</span>
+        ) : null}
       </header>
       <InboxGroupList groups={view.groups} categories={view.categories} />
     </main>

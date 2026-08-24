@@ -1,5 +1,5 @@
 import { and, asc, eq, isNull } from 'drizzle-orm'
-import { SEED_CATEGORIES } from '@/lib/domain/seed-categories'
+import { type CategoryGroup, SEED_CATEGORIES } from '@/lib/domain/seed-categories'
 import type { Executor } from './client'
 import { categories, type Category } from './schema'
 
@@ -16,6 +16,7 @@ export async function seedCategories(exec: Executor, householdId: string): Promi
         householdId,
         name: category.name,
         seedKey: category.seedKey,
+        group: category.group,
         sortOrder: index,
       })),
     )
@@ -41,12 +42,33 @@ export async function createCategory(
   exec: Executor,
   householdId: string,
   name: string,
+  group: CategoryGroup = 'DESPESA_VARIAVEL',
 ): Promise<Category> {
   const [row] = await exec
     .insert(categories)
-    .values({ householdId, name: name.trim(), sortOrder: 1_000 })
+    .values({ householdId, name: name.trim(), group, sortOrder: 1_000 })
     .returning()
   return row
+}
+
+/**
+ * Moves a category to another block of the month view.
+ *
+ * This is not cosmetic: GROUP_BUDGET_ROLE means moving a category into or out
+ * of RECEITA changes which transactions its actuals are read from. A category
+ * carrying spend that is moved to Receita will read zero until income rows
+ * point at it -- correct, but worth knowing before the number is disbelieved.
+ */
+export async function setCategoryGroup(
+  exec: Executor,
+  householdId: string,
+  categoryId: string,
+  group: CategoryGroup,
+): Promise<void> {
+  await exec
+    .update(categories)
+    .set({ group })
+    .where(and(eq(categories.id, categoryId), eq(categories.householdId, householdId)))
 }
 
 export async function renameCategory(

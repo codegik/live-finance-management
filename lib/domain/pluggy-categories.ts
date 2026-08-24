@@ -100,7 +100,29 @@ export const PLUGGY_CATEGORY_TO_SEED_KEY: Record<string, string> = {
  * spent on that category.
  */
 
+/**
+ * The income strings, mapped onto the Receita block.
+ *
+ * UNVERIFIED, exactly as the lists in lib/domain/budget-role.ts are: no
+ * checking account has ever been synced, so these come from Pluggy's
+ * published taxonomy rather than from observed rows. They are absent from
+ * tests/pluggy-category-coverage.test.ts for that reason -- that table is the
+ * record of what a CARD connector emits, and a card emits none of these.
+ *
+ * Mapping them is safe in the way the transfer strings are not: an income row
+ * already carries `budget_role = 'INCOME'`, so it is excluded from every
+ * spend query no matter which category it lands on. The worst a wrong mapping
+ * here can do is put salary on the wrong Receita line -- it cannot inflate a
+ * spending budget.
+ */
+const PLUGGY_INCOME_TO_SEED_KEY: Record<string, string> = {
+  Salary: 'income-salary',
+  Retirement: 'income-salary',
+  'Interest income': 'income-extra',
+  'Investment redemption': 'income-extra',
+}
+
 export function seedKeyForPluggyCategory(category: string | null | undefined): string | null {
   if (!category) return null
-  return PLUGGY_CATEGORY_TO_SEED_KEY[category] ?? null
+  return PLUGGY_CATEGORY_TO_SEED_KEY[category] ?? PLUGGY_INCOME_TO_SEED_KEY[category] ?? null
 }

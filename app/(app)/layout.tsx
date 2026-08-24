@@ -1,47 +1,30 @@
-import Link from 'next/link'
 import type { ReactNode } from 'react'
+import { AppNav } from '@/components/AppNav'
+import { requireSession } from '@/lib/auth/session'
+import { getDb } from '@/lib/db/client'
+import { countUncategorized } from '@/lib/views/inbox'
+
+export const dynamic = 'force-dynamic'
 
 /**
- * The only navigation in the app. Without it /settings/categories and
- * /settings/rules are reachable only by typing a URL, and the rules screen is
- * the one place a CONTAINS rule can be created -- so an unreachable screen
- * would break a guarantee the design leans on.
+ * The shell every signed-in screen is drawn inside: a sidebar on a desktop, a
+ * tab bar on a phone.
  *
- * Deliberately not a client component: these are plain links with no active
- * state, and keeping it on the server means no JavaScript ships for it.
+ * The session is read here rather than passed down because the nav's inbox
+ * count needs a household. It deliberately does NOT redirect on a missing
+ * session: every page below already calls requireSession().catch(toSignInOrThrow),
+ * and a second redirect here would race the first. A layout that cannot name
+ * the household simply draws the nav with nothing waiting in it.
  */
-export default function AppLayout({ children }: { children: ReactNode }) {
+export default async function AppLayout({ children }: { children: ReactNode }) {
+  const uncategorizedCount = await requireSession()
+    .then((session) => countUncategorized(getDb(), session.householdId))
+    .catch(() => 0)
+
   return (
-    <>
-      <nav className="nav">
-        <ul className="nav__list">
-          <li>
-            <Link href="/dashboard">Dashboard</Link>
-          </li>
-          <li>
-            <Link href="/ledger">Ledger</Link>
-          </li>
-          <li>
-            <Link href="/inbox">Inbox</Link>
-          </li>
-          <li>
-            <Link href="/forward">Forward</Link>
-          </li>
-          <li>
-            <Link href="/budgets">Budgets</Link>
-          </li>
-          <li>
-            <Link href="/settings/connections">Connections</Link>
-          </li>
-          <li>
-            <Link href="/settings/categories">Categories</Link>
-          </li>
-          <li>
-            <Link href="/settings/rules">Rules</Link>
-          </li>
-        </ul>
-      </nav>
-      {children}
-    </>
+    <div className="shell">
+      <AppNav uncategorizedCount={uncategorizedCount} />
+      <div className="content">{children}</div>
+    </div>
   )
 }

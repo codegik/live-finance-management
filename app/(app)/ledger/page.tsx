@@ -25,16 +25,27 @@ export default async function LedgerPage({
   return (
     <main className="page">
       <header className="page__header">
-        <h1>Ledger</h1>
-        {view.uncategorizedCount > 0 ? (
-          <Link href="/inbox" className="badge">
-            {view.uncategorizedCount} to categorize
+        <div className="page__title">
+          <h1>Extrato</h1>
+          <span className="page__sub">
+            {includeExcluded
+              ? 'Incluindo transferências e receitas'
+              : 'Apenas gastos — transferências e receitas ocultas'}
+          </span>
+        </div>
+        <div className="page__actions">
+          {view.uncategorizedCount > 0 ? (
+            <Link href="/inbox" className="badge">
+              {view.uncategorizedCount} a categorizar
+            </Link>
+          ) : null}
+          <Link
+            href={includeExcluded ? '/ledger' : '/ledger?transfers=1'}
+            className="btn-quiet"
+          >
+            {includeExcluded ? 'Ocultar transferências' : 'Mostrar transferências'}
           </Link>
-        ) : null}
-        <Link href={includeExcluded ? '/ledger' : '/ledger?transfers=1'}>
-          {includeExcluded ? 'Hide transfers and income' : 'Show transfers and income'}
-        </Link>
-        <Link href="/settings/connections">Connections</Link>
+        </div>
       </header>
       <StaleBanner health={view.health} />
       <TransactionList days={view.days} />

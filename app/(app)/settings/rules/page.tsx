@@ -17,7 +17,12 @@ export default async function RulesSettingsPage() {
   return (
     <main className="page page--narrow">
       <header className="page__header">
-        <h1>Rules</h1>
+        <div className="page__title">
+          <h1>Regras</h1>
+          <span className="page__sub">
+            Uma regra decide a categoria de um estabelecimento, hoje e no histórico.
+          </span>
+        </div>
       </header>
 
       {/* The inbox only ever writes EXACT rules. This form is the only way a
@@ -26,13 +31,15 @@ export default async function RulesSettingsPage() {
       <CreateRuleForm categories={categories.map((c) => ({ id: c.id, name: c.name }))} />
 
       {rules.length === 0 ? (
-        <p className="empty">No rules yet. Categorize a merchant in the inbox to create one.</p>
+        <p className="empty">
+          Nenhuma regra ainda. Categorize um estabelecimento em “A categorizar” para criar uma.
+        </p>
       ) : (
         <ul className="settings__list">
           {rules.map((rule) => (
             <li key={rule.id} className="settings__row">
               <span>
-                {rule.matchType === 'EXACT' ? 'is' : 'contains'} <strong>{rule.pattern}</strong> →{' '}
+                {rule.matchType === 'EXACT' ? 'é' : 'contém'} <strong>{rule.pattern}</strong> →{' '}
                 {rule.categoryName}
               </span>
               <DeleteRuleForm ruleId={rule.id} />

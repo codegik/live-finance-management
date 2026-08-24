@@ -1,208 +1,627 @@
-:root { color-scheme: light dark; --gap: 0.75rem; }
+/*
+ * One token set, two themes. Dark is the default rather than a variant: this
+ * app is read at night, after the day's spending has landed, and a white page
+ * at that hour is the reason the household stopped opening it.
+ *
+ * Colour carries meaning here and is never decorative. --pos is money the
+ * household kept, --neg is a limit already broken, --warn is a forecast that
+ * has not happened yet. Nothing else is allowed to be green, red or amber.
+ */
+:root {
+  color-scheme: dark;
+
+  --bg: #0a0b0d;
+  --surface: #121418;
+  --surface-2: #171a1f;
+  --surface-3: #1d2127;
+  --border: #23272e;
+  --border-strong: #313741;
+
+  --text: #e7eaee;
+  --text-dim: #98a1ad;
+  --text-faint: #6a7380;
+
+  --accent: #6b95ff;
+  --accent-dim: #24304d;
+  --pos: #3ddc97;
+  --pos-dim: #123528;
+  --neg: #ff6b6b;
+  --neg-dim: #3d1d1f;
+  --warn: #f5b544;
+  --warn-dim: #3a2c12;
+
+  --radius: 10px;
+  --radius-sm: 6px;
+  --gap: 0.75rem;
+  --sidebar: 15rem;
+
+  --font: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  /* Every figure in this app is money, and money must align in a column. */
+  --font-num: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+
+    --bg: #f6f7f9;
+    --surface: #ffffff;
+    --surface-2: #fafbfc;
+    --surface-3: #f0f2f5;
+    --border: #e3e6ea;
+    --border-strong: #cbd1d9;
+
+    --text: #14171c;
+    --text-dim: #5c6570;
+    --text-faint: #868f9b;
+
+    --accent: #2f5fe0;
+    --accent-dim: #e6ecfd;
+    --pos: #0f8a5f;
+    --pos-dim: #e2f5ec;
+    --neg: #cf3838;
+    --neg-dim: #fde9e9;
+    --warn: #a96c07;
+    --warn-dim: #fdf1dc;
+  }
+}
+
 * { box-sizing: border-box; }
-body { margin: 0; font: 16px/1.5 system-ui, sans-serif; }
-.page { max-width: 40rem; margin: 0 auto; padding: var(--gap); }
-.page--narrow { max-width: 22rem; }
-.page__header { display: flex; align-items: center; justify-content: space-between; gap: var(--gap); }
-.banner--stale { border: 1px solid #b45309; background: #fef3c7; color: #78350f; padding: var(--gap); border-radius: 8px; }
-.ledger__day { margin: 0 0 var(--gap); }
-.ledger__day-header { display: flex; justify-content: space-between; align-items: baseline; }
-.ledger__day-header h2 { font-size: 0.875rem; font-weight: 600; margin: 0; }
-.ledger ul { list-style: none; margin: 0; padding: 0; }
-.ledger__item { display: grid; grid-template-columns: 1fr auto; gap: 0 var(--gap); padding: var(--gap) 0; border-bottom: 1px solid #e5e5e5; }
-.ledger__meta { grid-column: 1; font-size: 0.8125rem; opacity: 0.7; }
-.ledger__amount { grid-row: 1 / span 2; align-self: center; font-variant-numeric: tabular-nums; }
-form { display: grid; gap: var(--gap); }
-label { display: grid; gap: 0.25rem; }
-input, button { font: inherit; padding: 0.5rem; }
 
-.ledger__category {
-  font-size: 0.75rem;
-  padding: 0.1rem 0.45rem;
-  border-radius: 999px;
-  background: #eef2ff;
-  color: #3730a3;
-  justify-self: start;
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.55 var(--font);
+  -webkit-font-smoothing: antialiased;
 }
 
-.ledger__category--none {
-  background: #fef3c7;
-  color: #92400e;
+h1, h2, h3 { font-weight: 620; letter-spacing: -0.015em; }
+h1 { font-size: 1.35rem; margin: 0; }
+h2 { font-size: 1rem; margin: 0; }
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* Money, everywhere it appears. */
+.num { font-family: var(--font-num); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+
+/* ---------------------------------------------------------------- shell -- */
+
+.shell { display: grid; grid-template-columns: var(--sidebar) 1fr; min-height: 100dvh; }
+
+.sidebar {
+  position: sticky;
+  top: 0;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 1.1rem 0.75rem;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
 }
 
-.badge {
+.sidebar__brand {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0 0.5rem;
+  font-weight: 640;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+.sidebar__mark {
+  display: grid;
+  place-items: center;
+  width: 1.65rem;
+  height: 1.65rem;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(140deg, var(--accent), var(--pos));
+  color: #08090b;
   font-size: 0.8rem;
-  padding: 0.2rem 0.6rem;
-  border-radius: 999px;
-  background: #fef3c7;
-  color: #92400e;
-  text-decoration: none;
+  font-weight: 800;
 }
 
-.inbox__group {
-  display: grid;
-  gap: 0.5rem;
-  padding: 0.75rem 0;
-  border-bottom: 1px solid #e5e7eb;
+.sidebar__section {
+  padding: 0 0.6rem 0.35rem;
+  font-size: 0.68rem;
+  font-weight: 640;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-faint);
 }
 
-.inbox__group-header {
+.sidebar__list { list-style: none; margin: 0 0 0.25rem; padding: 0; display: grid; gap: 1px; }
+
+.sidebar__link {
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  align-items: baseline;
   gap: 0.5rem;
+  padding: 0.42rem 0.6rem;
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  font-size: 0.875rem;
 }
 
-.inbox__rule {
-  display: grid;
-  gap: 0.4rem;
-  border: 1px solid #e5e7eb;
-  border-radius: 0.5rem;
-  padding: 0.5rem;
+.sidebar__link:hover { background: var(--surface-3); color: var(--text); text-decoration: none; }
+
+/* Active state is a fill, not just a colour: at 0.875rem a colour shift alone
+   is not enough to find your place at a glance. */
+.sidebar__link[aria-current='page'] {
+  background: var(--accent-dim);
+  color: var(--text);
+  font-weight: 560;
 }
 
-.settings__list {
-  list-style: none;
-  padding: 0;
-  display: grid;
-  gap: 0.5rem;
+.sidebar__count {
+  min-width: 1.35rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: var(--warn-dim);
+  color: var(--warn);
+  font-family: var(--font-num);
+  font-size: 0.7rem;
+  font-weight: 640;
+  text-align: center;
 }
 
-.settings__row {
+.content { min-width: 0; }
+
+.page { max-width: 62rem; margin: 0 auto; padding: 1.5rem 1.25rem 4.5rem; }
+.page--narrow { max-width: 34rem; }
+
+.page__header {
   display: flex;
-  gap: 0.5rem;
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
+  gap: var(--gap);
+  margin-bottom: 1.25rem;
 }
 
-.settings__row--stacked {
-  align-items: flex-start;
+.page__title { display: grid; gap: 0.15rem; }
+.page__sub { color: var(--text-dim); font-size: 0.85rem; }
+.page__actions { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+
+/* -------------------------------------------------------------- controls -- */
+
+input, select, button, textarea { font: inherit; color: inherit; }
+
+input, select, textarea {
+  padding: 0.5rem 0.6rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
 }
 
-.settings__meta {
-  margin: 0.25rem 0;
+input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+input[type='number'] { font-family: var(--font-num); }
+
+button {
+  padding: 0.5rem 0.85rem;
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
   font-size: 0.875rem;
-  opacity: 0.7;
+  font-weight: 540;
+  cursor: pointer;
 }
 
-.settings__sublist {
-  margin: 0.25rem 0 0;
-  padding-left: 1rem;
-  font-size: 0.875rem;
-}
+button:hover { background: var(--border); }
 
-.settings__confirm {
-  display: grid;
-  gap: 0.4rem;
-  border: 1px solid #b91c1c;
-  border-radius: 0.5rem;
-  padding: 0.5rem;
-}
+button[type='submit'] { background: var(--accent); border-color: var(--accent); color: #06080d; }
+button[type='submit']:hover { filter: brightness(1.08); }
 
-.settings__inline {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  align-items: flex-end;
-  margin-top: 0.25rem;
-}
+form { display: grid; gap: var(--gap); }
+label { display: grid; gap: 0.3rem; font-size: 0.85rem; color: var(--text-dim); }
 
-.form__message {
-  color: #166534;
-  font-size: 0.85rem;
-}
-
-.form__error {
-  color: #b91c1c;
-  font-size: 0.85rem;
-}
-
-.empty {
-  color: #6b7280;
-  padding: 1.5rem 0;
-}
-
-.nav {
-  border-bottom: 1px solid #e5e7eb;
-}
-
-.nav__list {
-  list-style: none;
-  margin: 0 auto;
-  padding: var(--gap);
-  max-width: 40rem;
-  display: flex;
-  gap: 0.4rem 0.75rem;
-  flex-wrap: wrap;
-  font-size: 0.9rem;
-}
-
-.nav__list a {
-  color: #3730a3;
-  text-decoration: none;
-}
-
-.nav__list a:hover {
-  text-decoration: underline;
-}
-
-.budget {
-  list-style: none;
-  padding: 0;
-  display: grid;
-  gap: 0.75rem;
-}
-
-.budget__row {
-  display: grid;
-  gap: 0.2rem;
-}
-
-.budget__name {
-  font-weight: 600;
-}
-
-.budget__amounts {
-  font-size: 0.9rem;
-}
-
-.budget__nobudget,
-.budget__hint {
-  color: #6b7280;
+.btn-quiet {
+  padding: 0.32rem 0.6rem;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
   font-size: 0.8rem;
 }
+.btn-quiet:hover { background: var(--surface-3); color: var(--text); text-decoration: none; }
 
-.budget__track {
-  display: block;
-  height: 0.4rem;
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.6rem;
   border-radius: 999px;
-  background: #e5e7eb;
+  background: var(--warn-dim);
+  border: 1px solid transparent;
+  color: var(--warn);
+  font-size: 0.8rem;
+  font-weight: 540;
+}
+.badge:hover { text-decoration: none; border-color: var(--warn); }
+
+.empty { color: var(--text-faint); padding: 1.25rem 0; font-size: 0.875rem; }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+/* ---------------------------------------------------------- month picker -- */
+
+.monthnav { display: flex; align-items: center; gap: 0.4rem; }
+
+.monthnav__arrow {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-dim);
+}
+.monthnav__arrow:hover { background: var(--surface-3); color: var(--text); text-decoration: none; }
+
+.monthnav__strip {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.monthnav__strip::-webkit-scrollbar { display: none; }
+
+.monthnav__month {
+  padding: 0.3rem 0.55rem;
+  border-radius: 4px;
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+.monthnav__month:hover { background: var(--surface-3); color: var(--text); text-decoration: none; }
+.monthnav__month[aria-current='page'] { background: var(--accent); color: #06080d; font-weight: 620; }
+/* The month you are actually in, when you are looking at a different one. */
+.monthnav__month--today { box-shadow: inset 0 0 0 1px var(--border-strong); }
+
+/* -------------------------------------------------------------- summary -- */
+
+.summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 1px;
+  margin-bottom: 1.25rem;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   overflow: hidden;
 }
 
-.budget__bar {
-  display: block;
-  height: 100%;
-  background: #3730a3;
+.stat { display: grid; gap: 0.3rem; padding: 0.85rem 1rem; background: var(--surface); }
+.stat__label { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-faint); }
+.stat__value { font-family: var(--font-num); font-size: 1.2rem; font-weight: 620; letter-spacing: -0.03em; }
+.stat__meta { font-size: 0.76rem; color: var(--text-dim); }
+
+.stat__value--pos { color: var(--pos); }
+.stat__value--neg { color: var(--neg); }
+
+/* ---------------------------------------------------------- month blocks -- */
+
+.block { margin-bottom: 1.5rem; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+
+.block__header {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 0.7rem 1rem;
+  background: var(--surface-3);
+  border-bottom: 1px solid var(--border);
 }
 
-/* Already over budget: it has happened. */
-.budget__bar--over {
-  background: #b91c1c;
+.block__title { font-size: 0.74rem; font-weight: 680; letter-spacing: 0.09em; text-transform: uppercase; }
+.block__title--receita { color: var(--pos); }
+.block__title--investimento { color: var(--accent); }
+.block__title--fixa { color: var(--warn); }
+.block__title--variavel { color: var(--text-dim); }
+
+.block__total { font-family: var(--font-num); font-size: 0.95rem; font-weight: 640; }
+.block__planned { font-family: var(--font-num); font-size: 0.8rem; color: var(--text-faint); }
+
+.block__rows { list-style: none; margin: 0; padding: 0; }
+
+.row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.15rem 1rem;
+  padding: 0.6rem 1rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.row:last-child { border-bottom: 0; }
+.row:hover { background: var(--surface-2); }
+
+.row__name { font-size: 0.875rem; }
+.row__amounts { grid-column: 2; grid-row: 1; text-align: right; font-family: var(--font-num); font-size: 0.875rem; }
+.row__planned { color: var(--text-faint); }
+.row__meta { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 0.5rem; font-size: 0.74rem; color: var(--text-faint); }
+.row__delta { font-family: var(--font-num); font-weight: 600; }
+.row__delta--over { color: var(--neg); }
+.row__delta--under { color: var(--pos); }
+.row__delta--pace { color: var(--warn); }
+
+/* An empty track is information: a plan with nothing against it yet. A row
+   with NO plan has nothing to be a fraction of and draws no track at all --
+   a 0% bar would collapse the two into the same picture. */
+.track {
+  grid-column: 1 / -1;
+  position: relative;
+  height: 4px;
+  margin-top: 0.15rem;
+  border-radius: 999px;
+  background: var(--surface-3);
+  overflow: hidden;
 }
 
-/* Forecast to go over: it has not happened yet, and must not look as if it has. */
-.budget__bar--pacing-over {
-  background: #d97706;
+.track__bar { position: absolute; inset: 0 auto 0 0; border-radius: 999px; background: var(--accent); }
+.track__bar--over { background: var(--neg); }
+.track__bar--pacing-over { background: var(--warn); }
+.track__bar--pos { background: var(--pos); }
+
+/* Where the month is expected to finish, when that is past the plan. */
+.track__pace {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  background: var(--text-dim);
 }
 
-.budget__pace {
-  font-size: 0.8rem;
-  color: #6b7280;
+/* ------------------------------------------------------------ year grid -- */
+
+.grid-scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); }
+
+.grid { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 0.8rem; }
+
+.grid th, .grid td { padding: 0.45rem 0.7rem; white-space: nowrap; border-bottom: 1px solid var(--border); }
+
+.grid thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface-3);
+  font-size: 0.7rem;
+  font-weight: 640;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  text-align: right;
 }
 
-.month-picker {
-  font-size: 0.9rem;
-  color: #6b7280;
+/* The category column stays put while the months scroll: a number with no
+   row label is unreadable, and twelve months never fit a phone. */
+.grid th.grid__label, .grid td.grid__label {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: 11rem;
+  background: var(--surface);
+  text-align: left;
+  border-right: 1px solid var(--border);
 }
+.grid thead th.grid__label { z-index: 3; background: var(--surface-3); }
+
+.grid td { background: var(--surface); text-align: right; font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+
+.grid__group td, .grid__group th.grid__label {
+  background: var(--surface-2);
+  font-weight: 640;
+  font-size: 0.72rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.grid__total td, .grid__total th.grid__label { background: var(--surface-2); font-weight: 640; }
+
+.grid__zero { color: var(--text-faint); }
+.grid__over { color: var(--neg); }
+.grid__under { color: var(--pos); }
+.grid__cell:hover { background: var(--surface-3); text-decoration: none; }
+.grid__now { box-shadow: inset 2px 0 0 var(--accent), inset -2px 0 0 var(--accent); }
+
+.grid a { color: inherit; display: block; }
+
+/* ---------------------------------------------------------------- banner -- */
+
+.banner--stale {
+  display: flex;
+  gap: 0.6rem;
+  padding: 0.7rem 0.9rem;
+  margin-bottom: 1rem;
+  background: var(--warn-dim);
+  border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
+  border-radius: var(--radius);
+  color: var(--warn);
+  font-size: 0.85rem;
+}
+
+/* ---------------------------------------------------------------- ledger -- */
+
+.ledger__day { margin: 0 0 1rem; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+
+.ledger__day-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 0.55rem 1rem;
+  background: var(--surface-3);
+  border-bottom: 1px solid var(--border);
+}
+.ledger__day-header h2 { font-size: 0.78rem; font-weight: 640; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-dim); }
+.ledger__day-header span { font-family: var(--font-num); font-size: 0.85rem; font-weight: 600; }
+
+.ledger ul { list-style: none; margin: 0; padding: 0; }
+
+.ledger__item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.1rem 1rem;
+  padding: 0.6rem 1rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.ledger__item:last-child { border-bottom: 0; }
+.ledger__item:hover { background: var(--surface-2); }
+
+.ledger__meta { grid-column: 1; font-size: 0.76rem; color: var(--text-faint); }
+.ledger__amount { grid-row: 1 / span 2; align-self: center; font-family: var(--font-num); font-variant-numeric: tabular-nums; font-size: 0.9rem; }
+
+.ledger__category {
+  justify-self: start;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: var(--accent-dim);
+  color: var(--accent);
+  font-size: 0.7rem;
+}
+.ledger__category--none { background: var(--warn-dim); color: var(--warn); }
+
+/* ----------------------------------------------------------------- inbox -- */
+
+.inbox__group {
+  display: grid;
+  gap: 0.6rem;
+  padding: 0.85rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 0.6rem;
+}
+
+.inbox__group-header { display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; }
+
+.inbox__rule { display: grid; gap: 0.4rem; padding: 0.6rem; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+
+/* -------------------------------------------------------------- settings -- */
+
+.settings__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
+
+.settings__row {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  padding: 0.7rem 0.9rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.settings__row--stacked { align-items: flex-start; }
+.settings__meta { margin: 0.2rem 0; font-size: 0.8rem; color: var(--text-dim); }
+.settings__sublist { margin: 0.25rem 0 0; padding-left: 1rem; font-size: 0.8rem; color: var(--text-dim); }
+.settings__confirm { display: grid; gap: 0.4rem; padding: 0.6rem; background: var(--neg-dim); border: 1px solid var(--neg); border-radius: var(--radius-sm); }
+.settings__inline { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: flex-end; margin-top: 0.25rem; }
+
+.form__message { color: var(--pos); font-size: 0.82rem; }
+.form__error { color: var(--neg); font-size: 0.82rem; }
+
+/* --------------------------------------------------------------- mobile -- */
+
+@media (max-width: 52rem) {
+  .shell { grid-template-columns: 1fr; }
+
+  .sidebar {
+    position: fixed;
+    inset: auto 0 0 0;
+    top: auto;
+    height: auto;
+    flex-direction: row;
+    align-items: center;
+    gap: 0;
+    padding: 0.3rem 0.4rem calc(0.3rem + env(safe-area-inset-bottom));
+    border-right: 0;
+    border-top: 1px solid var(--border);
+    overflow-x: auto;
+    scrollbar-width: none;
+    z-index: 10;
+  }
+  .sidebar::-webkit-scrollbar { display: none; }
+
+  /* The brand and the section headings are wayfinding for a sidebar. In a tab
+     bar they are five taps' worth of stolen width. */
+  .sidebar__brand, .sidebar__section { display: none; }
+
+  .sidebar__list { grid-auto-flow: column; gap: 0.15rem; }
+  .sidebar__link { flex-direction: column; gap: 0.1rem; padding: 0.4rem 0.6rem; font-size: 0.72rem; white-space: nowrap; }
+
+  .page { padding: 1rem 0.85rem 5.5rem; }
+  .summary { grid-template-columns: repeat(2, 1fr); }
+  .block__header { grid-template-columns: 1fr auto; }
+  .block__planned { grid-column: 2; text-align: right; }
+}
+
+/* ------------------------------------------------------------- planning -- */
+
+.plan-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 0.1rem 1rem;
+  padding: 0.5rem 1rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.plan-row:last-child { border-bottom: 0; }
+
+.plan-row__field { display: contents; }
+.plan-row__name { font-size: 0.875rem; color: var(--text); }
+.plan-row__field input { width: 9rem; text-align: right; font-family: var(--font-num); }
+.plan-row__hint { grid-column: 1 / -1; font-size: 0.74rem; color: var(--text-faint); }
+
+/* Sticky, because the form is four blocks long and a Save button at the very
+   bottom of twenty categories is a button nobody finds. */
+.plan-save {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  justify-content: flex-end;
+  padding: 0.75rem 0;
+  background: linear-gradient(to top, var(--bg) 65%, transparent);
+}
+
+@media (max-width: 52rem) {
+  .plan-save { bottom: 3.5rem; }
+}
+
+/* The create form is a row of fields, not a stack: three stacked labels above
+   a long list read as the start of the list rather than as a way in. */
+.settings__create {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  padding: 0.9rem 1rem;
+  margin-bottom: 1.25rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.settings__create label { flex: 1 1 12rem; }
+
+/* Inside a block the rows already have the block's border around them. */
+.settings__list--flush { gap: 0; }
+.settings__list--flush .settings__row { border: 0; border-bottom: 1px solid var(--border); border-radius: 0; }
+.settings__list--flush .settings__row:last-child { border-bottom: 0; }

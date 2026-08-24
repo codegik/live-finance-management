@@ -1,7 +1,17 @@
 'use client'
 
 import { useActionState } from 'react'
-import { archiveCategoryAction, createCategoryAction, renameCategoryAction } from './actions'
+import {
+  CATEGORY_GROUP_LABELS,
+  CATEGORY_GROUPS,
+  type CategoryGroup,
+} from '@/lib/domain/seed-categories'
+import {
+  archiveCategoryAction,
+  createCategoryAction,
+  renameCategoryAction,
+  setCategoryGroupAction,
+} from './actions'
 import type { SettingsState } from './state'
 
 const INITIAL: SettingsState = { error: null, message: null }
@@ -27,43 +37,83 @@ function Feedback({ state }: { state: SettingsState }) {
   )
 }
 
+function GroupSelect({ name, defaultValue }: { name: string; defaultValue: CategoryGroup }) {
+  return (
+    <select name={name} defaultValue={defaultValue} aria-label="Bloco">
+      {CATEGORY_GROUPS.map((group) => (
+        <option key={group} value={group}>
+          {CATEGORY_GROUP_LABELS[group]}
+        </option>
+      ))}
+    </select>
+  )
+}
+
 export function CreateCategoryForm() {
   const [state, formAction, pending] = useActionState(createCategoryAction, INITIAL)
 
   return (
-    <form action={formAction}>
+    <form action={formAction} className="settings__create">
       <label>
-        New category
-        <input name="name" type="text" required />
+        Nova categoria
+        <input name="name" type="text" required placeholder="Ex.: Plano de saúde" />
+      </label>
+      <label>
+        Bloco
+        <GroupSelect name="group" defaultValue="DESPESA_VARIAVEL" />
       </label>
       <Feedback state={state} />
       <button type="submit" disabled={pending}>
-        {pending ? 'Adding…' : 'Add'}
+        {pending ? 'Adicionando…' : 'Adicionar'}
       </button>
     </form>
   )
 }
 
-export function CategoryRow({ category }: { category: { id: string; name: string } }) {
+export function CategoryRow({
+  category,
+}: {
+  category: { id: string; name: string; group: CategoryGroup }
+}) {
   const [renameState, renameFormAction, renaming] = useActionState(renameCategoryAction, INITIAL)
+  const [groupState, groupFormAction, moving] = useActionState(setCategoryGroupAction, INITIAL)
   const [archiveState, archiveFormAction, archiving] = useActionState(archiveCategoryAction, INITIAL)
 
   return (
-    <li className="settings__row">
-      <form action={renameFormAction}>
+    <li className="settings__row settings__row--stacked">
+      <form action={renameFormAction} className="settings__inline">
         <input type="hidden" name="categoryId" value={category.id} />
-        <input name="name" type="text" defaultValue={category.name} aria-label="Category name" />
-        <button type="submit" disabled={renaming}>
-          {renaming ? 'Renaming…' : 'Rename'}
+        <input
+          name="name"
+          type="text"
+          defaultValue={category.name}
+          aria-label="Nome da categoria"
+        />
+        <button type="submit" className="btn-quiet" disabled={renaming}>
+          {renaming ? 'Renomeando…' : 'Renomear'}
         </button>
       </form>
-      <form action={archiveFormAction}>
+
+      {/* Its own form and its own button, because moving a category into or
+          out of Receita changes which transactions it is totalled from -- a
+          different act from fixing a spelling, and one worth confirming. */}
+      <form action={groupFormAction} className="settings__inline">
         <input type="hidden" name="categoryId" value={category.id} />
-        <button type="submit" disabled={archiving}>
-          {archiving ? 'Archiving…' : 'Archive'}
+        <GroupSelect name="group" defaultValue={category.group} />
+        <button type="submit" className="btn-quiet" disabled={moving}>
+          {moving ? 'Movendo…' : 'Mover'}
         </button>
       </form>
+
+      <form action={archiveFormAction} className="settings__inline">
+        <input type="hidden" name="categoryId" value={category.id} />
+        <button type="submit" className="btn-quiet" disabled={archiving}>
+          {archiving ? 'Arquivando…' : 'Arquivar'}
+        </button>
+      </form>
+
       <Feedback state={renameState} />
+      <Feedback state={groupState} />
       <Feedback state={archiveState} />
     </li>
   )
