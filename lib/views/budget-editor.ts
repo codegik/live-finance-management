@@ -2,6 +2,7 @@ import { and, eq, inArray, lt, sql } from 'drizzle-orm'
 import { listBudgets } from '@/lib/db/budgets'
 import { listCategories } from '@/lib/db/categories'
 import type { Db } from '@/lib/db/client'
+import { budgetMonthSql, budgetPeriodSql } from '@/lib/db/budget-month-sql'
 import { accounts, connections, transactions } from '@/lib/db/schema'
 import {
   groupBudgetsByCategory,
@@ -50,7 +51,7 @@ export async function getBudgetEditorView(
       .select({
         categoryId: transactions.categoryId,
         budgetRole: transactions.budgetRole,
-        month: sql<string>`to_char(${transactions.date}, 'YYYY-MM')`,
+        month: budgetPeriodSql,
         total: sql<string>`sum(${transactions.amountCents})`,
       })
       .from(transactions)
@@ -64,13 +65,13 @@ export async function getBudgetEditorView(
           // hand is the part of the spreadsheet this screen exists to
           // replace.
           inArray(transactions.budgetRole, ['SPEND', 'INCOME']),
-          lt(transactions.date, currentMonthStart),
+          lt(budgetMonthSql, currentMonthStart),
         ),
       )
       .groupBy(
         transactions.categoryId,
         transactions.budgetRole,
-        sql`to_char(${transactions.date}, 'YYYY-MM')`,
+        budgetPeriodSql,
       ),
   ])
 

@@ -157,9 +157,12 @@ export async function getMonthView(
         stance === 'PAST'
           ? actualCents
           : stance === 'FUTURE'
-            ? // Nothing has been spent in a month that has not started. The
-              // only honest figure is what is already committed to it.
-              committedCents
+            ? // Since money is filed by the month it is PAID, a later month
+              // already holds real purchases: everything bought since the last
+              // fatura closed is waiting there. Every figure in it is a known
+              // amount, so the projection is simply what is attributed to it --
+              // there is no elapsed time to extrapolate a rate from.
+              actualCents
             : pace({ variableCents, committedCents, dayOfMonth: elapsedDays, daysInPeriod: daysInMonth }),
     }
   })

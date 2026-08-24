@@ -31,7 +31,10 @@ try {
 
   const mailer = createMailer({ apiKey: env.RESEND_API_KEY, from: env.ALERT_EMAIL_FROM })
 
-  const { succeeded, failed, recategorized, rolesCorrected, installmentsCorrected, alerted } =
+  const {
+    succeeded, failed, recategorized, rolesCorrected,
+    installmentsCorrected, budgetMonthsCorrected, alerted,
+  } =
   await reconcileAll(
     db,
     pluggy,
@@ -42,7 +45,8 @@ try {
   console.log(
     `reconcile finished: ${succeeded.length} succeeded, ${failed.length} failed, ` +
     `${recategorized} recategorized, ${rolesCorrected} roles corrected, ` +
-    `${installmentsCorrected} instalments corrected, ${alerted} alerts sent`,
+    `${installmentsCorrected} instalments corrected, ` +
+    `${budgetMonthsCorrected} budget months corrected, ${alerted} alerts sent`,
   )
 
   if (failed.length > 0) {

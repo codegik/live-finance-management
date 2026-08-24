@@ -263,6 +263,13 @@ export const transactions = pgTable(
     // view are built on.
     installmentNumber: integer('installment_number'),
     installmentTotal: integer('installment_total'),
+    // The month the household actually pays this, which is the month it
+    // budgets it in. For a card purchase that is the month its fatura falls
+    // due, not the month it was bought -- see lib/domain/billing.ts. Always a
+    // first-of-month date. Nullable because it is derived: a row the refresh
+    // pass has not reached yet falls back to its own month, which is what the
+    // app did before this column existed.
+    budgetMonth: date('budget_month'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -275,6 +282,9 @@ export const transactions = pgTable(
     // Month-range scans are the dashboard's access pattern, and the Slice 1
     // indexes are keyed on account first, so they do not serve it.
     index('transaction_date_idx').on(t.date),
+    // Every budgeting screen now ranges on the paying month rather than the
+    // purchase date, so that is the column those scans need.
+    index('transaction_budget_month_idx').on(t.budgetMonth),
   ],
 )
 

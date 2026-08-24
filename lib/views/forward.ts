@@ -2,6 +2,7 @@ import { and, eq, gte, isNotNull, lte, sql } from 'drizzle-orm'
 import { listBudgets } from '@/lib/db/budgets'
 import { listCategories } from '@/lib/db/categories'
 import type { Db } from '@/lib/db/client'
+import { budgetMonthSql, budgetPeriodSql } from '@/lib/db/budget-month-sql'
 import { accounts, connections, transactions } from '@/lib/db/schema'
 import {
   addMonths,
@@ -64,7 +65,7 @@ export async function getForwardView(
     db
       .select({
         categoryId: transactions.categoryId,
-        month: sql<string>`to_char(${transactions.date}, 'YYYY-MM')`,
+        month: budgetPeriodSql,
         total: sql<string>`sum(${transactions.amountCents})`,
       })
       .from(transactions)
@@ -75,11 +76,11 @@ export async function getForwardView(
           eq(connections.householdId, householdId),
           eq(transactions.budgetRole, 'SPEND'),
           isNotNull(transactions.installmentTotal),
-          gte(transactions.date, from),
-          lte(transactions.date, to),
+          gte(budgetMonthSql, from),
+          lte(budgetMonthSql, to),
         ),
       )
-      .groupBy(transactions.categoryId, sql`to_char(${transactions.date}, 'YYYY-MM')`),
+      .groupBy(transactions.categoryId, budgetPeriodSql),
     listCategories(db, householdId),
     listBudgets(db, householdId),
   ])

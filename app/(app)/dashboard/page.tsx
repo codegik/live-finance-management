@@ -20,7 +20,8 @@ const PERIOD = /^\d{4}-(0[1-9]|1[0-2])$/
 
 function stanceLabel(view: { stance: string; elapsedDays: number; daysInMonth: number }): string {
   if (view.stance === 'PAST') return 'Mês fechado'
-  if (view.stance === 'FUTURE') return 'Ainda não começou · apenas parcelas já comprometidas'
+  if (view.stance === 'FUTURE')
+    return 'Ainda a vencer · compras já feitas que só serão pagas neste mês'
   return `Dia ${view.elapsedDays} de ${view.daysInMonth}`
 }
 

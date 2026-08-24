@@ -1,6 +1,7 @@
 import { and, eq, gte, inArray, lte, sql } from 'drizzle-orm'
 import type { Db } from '@/lib/db/client'
 import { accounts, connections, transactions } from '@/lib/db/schema'
+import { budgetMonthSql } from '@/lib/db/budget-month-sql'
 import type { BudgetRole } from '@/lib/domain/budget-role'
 import { monthBounds } from '@/lib/domain/budget'
 
@@ -75,8 +76,11 @@ export async function getCategorySpend(
         // are never in scope: they are the same money counted twice. Salary
         // is in scope only when the caller asks for it by name.
         inArray(transactions.budgetRole, [...roles]),
-        gte(transactions.date, start),
-        lte(transactions.date, end),
+        // The month the household PAYS this, not the month it was bought:
+        // a card purchase on 10/08 leaves the account on the September
+        // fatura. See lib/domain/billing.ts.
+        gte(budgetMonthSql, start),
+        lte(budgetMonthSql, end),
       ),
     )
     .groupBy(transactions.categoryId, transactions.budgetRole)

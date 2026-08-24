@@ -7,6 +7,7 @@ import type { Mailer } from '@/lib/email/resend'
 import type { PluggyClient } from '@/lib/pluggy/client'
 import { recategorize } from './categorize'
 import { refreshBudgetRoles } from './budget-roles'
+import { refreshBudgetMonths } from './budget-month'
 import { refreshInstallments } from './installments'
 import { syncConnection } from './transactions'
 
@@ -20,6 +21,7 @@ export async function reconcileAll(
   recategorized: number
   rolesCorrected: number
   installmentsCorrected: number
+  budgetMonthsCorrected: number
   alerted: number
 }> {
   const all = await db
@@ -51,6 +53,7 @@ export async function reconcileAll(
   let recategorized = 0
   let rolesCorrected = 0
   let installmentsCorrected = 0
+  let budgetMonthsCorrected = 0
   let alerted = 0
   for (const { householdId } of households) {
     try {
@@ -90,6 +93,12 @@ export async function reconcileAll(
       // back and reads its descriptor. See lib/sync/installments.ts.
       const { changed: parcels } = await refreshInstallments(db, householdId)
       installmentsCorrected += parcels
+      // AFTER refreshInstallments, and the order is load-bearing: the billing
+      // rule turns on installment_number, because instalments 2..N arrive
+      // already dated by the fatura they belong to. Run first, every parcela
+      // would be shifted a second time and land a month late.
+      const { changed: months } = await refreshBudgetMonths(db, householdId)
+      budgetMonthsCorrected += months
       const { changed } = await recategorize(db, { householdId })
       recategorized += changed
     } catch (error) {
@@ -114,5 +123,13 @@ export async function reconcileAll(
     }
   }
 
-  return { succeeded, failed, recategorized, rolesCorrected, installmentsCorrected, alerted }
+  return {
+    succeeded,
+    failed,
+    recategorized,
+    rolesCorrected,
+    installmentsCorrected,
+    budgetMonthsCorrected,
+    alerted,
+  }
 }
