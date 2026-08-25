@@ -2,6 +2,7 @@ import { eq, inArray } from 'drizzle-orm'
 import type { Executor } from '@/lib/db/client'
 import { accounts, categories, connections, transactions } from '@/lib/db/schema'
 import { type BudgetRole, resolveBudgetRole } from '@/lib/domain/budget-role'
+import { pairedBankPaymentIds } from '@/lib/domain/card-payments'
 
 /**
  * Brings `budget_role` into line with the household's transactions.
@@ -33,6 +34,17 @@ import { type BudgetRole, resolveBudgetRole } from '@/lib/domain/budget-role'
  * the same self-healing the role pass already had. This is why reconcileAll now
  * runs recategorize BEFORE this pass: a rule that files rows under the
  * card-payment category must be reflected here the same night.
+ *
+ * It also does what no per-row rule can: it PAIRS the bank leg of a fatura
+ * payment to the card settlement it pays and forces it TRANSFER without the
+ * household filing anything (lib/domain/card-payments.ts). That is a fact about
+ * two rows -- a bank debit equal and opposite to a 'Credit card payment' on a
+ * connected card the same day -- so it belongs here, in the one pass that sees
+ * the whole household at once, not in classifyRole, which sees a row alone. It
+ * self-heals like everything else: delete the card settlement and the bank leg
+ * pairs with nothing and returns to SPEND on the next run. An unlinked card is
+ * untouched by construction -- it has no settlement to pair against -- so a
+ * payment that is the only record of its spending stays counted.
  */
 export async function refreshBudgetRoles(
   exec: Executor,
@@ -41,6 +53,7 @@ export async function refreshBudgetRoles(
   const rows = await exec
     .select({
       id: transactions.id,
+      date: transactions.date,
       pluggyCategory: transactions.pluggyCategory,
       amountCents: transactions.amountCents,
       budgetRole: transactions.budgetRole,
@@ -53,14 +66,31 @@ export async function refreshBudgetRoles(
     .leftJoin(categories, eq(transactions.categoryId, categories.id))
     .where(eq(connections.householdId, householdId))
 
+  // The bank legs of fatura payments, paired to the card settlements they pay.
+  // Household-wide because the proof of a payment is a row on a DIFFERENT
+  // account. A row's own category still wins over this -- filing it elsewhere is
+  // the household overriding the pairing -- so it is only consulted as a
+  // fallback below, after resolveBudgetRole.
+  const pairedBankLegs = pairedBankPaymentIds(rows)
+
   // Grouped by target role so one UPDATE covers every row moving to it, rather
   // than one statement per transaction across a three-year history.
   const byRole = new Map<BudgetRole, string[]>()
   for (const row of rows) {
-    const role = resolveBudgetRole(row.categoryGroup ?? null, row.pluggyCategory, {
+    const resolved = resolveBudgetRole(row.categoryGroup ?? null, row.pluggyCategory, {
       accountType: row.accountType,
       amountCents: row.amountCents,
     })
+    // Pairing forces TRANSFER only where the household has not already spoken.
+    // resolveBudgetRole returns TRANSFER when a TRANSFER category is filed and
+    // INCOME/SPEND when any other category is -- and a payment the household
+    // deliberately filed as a real expense (a rare split, a disputed charge)
+    // must keep that filing. So the pairing applies only to rows still on their
+    // default SPEND, never overriding a resolved INCOME or a filed category.
+    const role =
+      resolved === 'SPEND' && row.categoryGroup == null && pairedBankLegs.has(row.id)
+        ? 'TRANSFER'
+        : resolved
     // Only rows whose stored role is actually wrong, so a nightly no-op costs
     // no writes and the returned count is honest.
     if (role === row.budgetRole) continue
