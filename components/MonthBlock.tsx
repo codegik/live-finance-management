@@ -1,3 +1,4 @@
+import { PlanEditor } from '@/components/PlanEditor'
 import { TransactionCategoryPicker } from '@/components/TransactionCategoryPicker'
 import { brl, brlSigned, percent } from '@/lib/format'
 import { MORE_IS_BETTER } from '@/lib/domain/seed-categories'
@@ -145,10 +146,12 @@ function RowTransactions({
 function Row({
   row,
   stance,
+  period,
   categories,
 }: {
   row: MonthRow
   stance: MonthStance
+  period: string
   categories: { id: string; name: string }[]
 }) {
   const tone = rowTone(row, stance)
@@ -164,11 +167,7 @@ function Row({
         <span className="row__name">{row.categoryName}</span>
         <span className="row__amounts">
           {brl(row.actualCents)}
-          {planned === null ? (
-            <span className="row__planned"> · sem plano</span>
-          ) : (
-            <span className="row__planned"> / {brl(planned)}</span>
-          )}
+          <PlanEditor categoryId={row.categoryId} period={period} plannedCents={planned} />
         </span>
 
         {/* An empty track is information: a plan with nothing against it yet. A
@@ -215,11 +214,7 @@ function Row({
             <span className="row__name">{row.categoryName}</span>
             <span className="row__amounts">
               {brl(row.actualCents)}
-              {planned === null ? (
-                <span className="row__planned"> · sem plano</span>
-              ) : (
-                <span className="row__planned"> / {brl(planned)}</span>
-              )}
+              <PlanEditor categoryId={row.categoryId} period={period} plannedCents={planned} />
             </span>
 
             {/* An empty track is information: a plan with nothing against it yet. A
@@ -284,11 +279,13 @@ function Row({
 export function MonthBlock({
   group,
   stance,
+  period,
   categories,
   extra,
 }: {
   group: MonthGroupView
   stance: MonthStance
+  period: string
   categories: { id: string; name: string }[]
   extra?: MonthExtra[]
 }) {
@@ -314,7 +311,13 @@ export function MonthBlock({
       </header>
       <ul className="block__rows">
         {group.rows.map((row) => (
-          <Row key={row.categoryId} row={row} stance={stance} categories={categories} />
+          <Row
+            key={row.categoryId}
+            row={row}
+            stance={stance}
+            period={period}
+            categories={categories}
+          />
         ))}
         {extras.map((item) => (
           <li key={item.label}>

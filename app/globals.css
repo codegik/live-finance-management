@@ -382,6 +382,42 @@ input[type='checkbox'], input[type='radio'] {
 .row__name { font-size: 0.875rem; }
 .row__amounts { grid-column: 2; grid-row: 1; text-align: right; font-family: var(--font-num); font-size: 0.875rem; }
 .row__planned { color: var(--text-faint); }
+
+/* The plan figure is now the control that edits it: a bare button that reads
+   as text until hovered, so the row still looks like a row and not a form. */
+.row__planned--edit {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  background: none;
+  font: inherit;
+  color: var(--text-faint);
+  cursor: text;
+}
+.row__planned--edit:hover,
+.row__planned--edit:focus-visible {
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.row__planned--unset { font-style: italic; }
+
+/* The field that replaces the figure while editing. Sized and aligned to sit
+   where the number was, so opening it does not shift the row. */
+.row__plan-edit { display: inline; }
+.row__plan-input {
+  width: 6.5rem;
+  text-align: right;
+  font-family: var(--font-num);
+  font-size: 0.875rem;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.05rem 0.35rem;
+}
+.row__plan-input:focus { outline: none; border-color: var(--accent, var(--text)); }
+
 .row__meta { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 0.5rem; font-size: 0.74rem; color: var(--text-faint); }
 .row__delta { font-family: var(--font-num); font-weight: 600; }
 .row__delta--over { color: var(--neg); }

@@ -78,6 +78,7 @@ export default async function MonthPage({
           key={group.group}
           group={group}
           stance={view.stance}
+          period={view.period}
           categories={categories.map((c) => ({ id: c.id, name: c.name }))}
           // Money that belongs in this block's total but has no row to sit on
           // is attached to variable spending, the block it would otherwise
