@@ -335,13 +335,30 @@ input[type='checkbox'], input[type='radio'] {
   overflow: hidden;
 }
 
-.stat { display: grid; gap: 0.3rem; padding: 0.85rem 1rem; background: var(--surface); }
+.stat { display: grid; gap: 0.35rem; padding: 0.85rem 1rem; background: var(--surface); align-content: start; }
 .stat__label { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text-faint); }
 .stat__value { font-family: var(--font-num); font-size: 1.2rem; font-weight: 620; letter-spacing: -0.03em; }
-.stat__meta { font-size: 0.76rem; color: var(--text-dim); }
 
 .stat__value--pos { color: var(--pos); }
 .stat__value--neg { color: var(--neg); }
+
+/* The plan the figure above is a fraction of, drawn the way a category row
+   draws its own: the fill is the realised share, its colour the direction of
+   travel -- neutral while a plan is merely being approached, green once a
+   "more is better" figure clears it, red once an expense overruns. */
+.stat__track { position: relative; height: 4px; margin-top: 0.1rem; border-radius: 999px; background: var(--surface-3); overflow: hidden; }
+.stat__bar { position: absolute; inset: 0 auto 0 0; border-radius: 999px; background: var(--accent); }
+.stat__bar--pos { background: var(--pos); }
+.stat__bar--over { background: var(--neg); }
+
+/* The plan and the gap that remains, on one line so the comparison is read at
+   a glance rather than reconstructed from two figures. */
+.stat__meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.15rem 0.55rem; font-size: 0.76rem; color: var(--text-dim); }
+.stat__plan { color: var(--text-dim); }
+.stat__delta { font-family: var(--font-num); font-weight: 600; }
+.stat__delta--pos { color: var(--pos); }
+.stat__delta--neg { color: var(--neg); }
+.stat__delta--dim { color: var(--text-faint); }
 
 /* ---------------------------------------------------------- month blocks -- */
 
