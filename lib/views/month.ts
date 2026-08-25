@@ -1,8 +1,17 @@
+import { and, desc, eq, gte, inArray, lte } from 'drizzle-orm'
+import { budgetMonthSql } from '@/lib/db/budget-month-sql'
+import { accounts, connections, transactions } from '@/lib/db/schema'
 import { listBudgets } from '@/lib/db/budgets'
 import { listCategories } from '@/lib/db/categories'
 import type { Db } from '@/lib/db/client'
 import { getHouseholdHealth, type HouseholdHealth } from '@/lib/db/health'
-import { daysInPeriod, groupBudgetsByCategory, pace, resolveBudget } from '@/lib/domain/budget'
+import {
+  daysInPeriod,
+  groupBudgetsByCategory,
+  monthBounds,
+  pace,
+  resolveBudget,
+} from '@/lib/domain/budget'
 import { saoPauloPeriod, saoPauloToday } from '@/lib/domain/dates'
 import {
   CATEGORY_GROUP_LABELS,
@@ -15,6 +24,19 @@ import { getCategorySpend } from './spend'
 
 /** Where a period sits relative to the household's today. */
 export type MonthStance = 'PAST' | 'CURRENT' | 'FUTURE'
+
+/** One transaction behind a category's figure, as the row's detail shows it. */
+export type MonthTransaction = {
+  id: string
+  date: string
+  /** Signed the same way the row is: bigger means more. */
+  amountCents: number
+  description: string
+  accountName: string
+  last4: string | null
+  /** `3/10` when this is an instalment, null otherwise. */
+  installment: string | null
+}
 
 export type MonthRow = {
   categoryId: string
@@ -37,6 +59,17 @@ export type MonthRow = {
    * that provably never occurred.
    */
   paceCents: number
+  /**
+   * The transactions this row's figure is made of.
+   *
+   * Capped at DETAIL_LIMIT. `actualCents` is an aggregate over every matching
+   * row, so a category with a thousand of them would otherwise ship all
+   * thousand to render a list nobody scrolls; the screen says when the list is
+   * shorter than the figure it explains.
+   */
+  transactions: MonthTransaction[]
+  /** True total behind `transactions`, which may be longer than the list. */
+  transactionCount: number
 }
 
 export type MonthGroupView = {
@@ -86,6 +119,9 @@ export type MonthView = {
   health: HouseholdHealth
 }
 
+/** How many rows of a single category a month row will carry. */
+const DETAIL_LIMIT = 200
+
 function stanceOf(period: string, current: string): MonthStance {
   if (period < current) return 'PAST'
   if (period > current) return 'FUTURE'
@@ -113,10 +149,40 @@ export async function getMonthView(
   const stance = stanceOf(period, currentPeriod)
   const daysInMonth = daysInPeriod(period)
 
-  const [totals, categories, budgetRows, health] = await Promise.all([
+  const { start: monthStart, end: monthEnd } = monthBounds(period)
+
+  const [totals, detail, categories, budgetRows, health] = await Promise.all([
     // Both roles in one query. Receita reads INCOME rows; every other block
     // reads SPEND. See GROUP_BUDGET_ROLE.
     getCategorySpend(db, householdId, period, today, { roles: ['SPEND', 'INCOME'] }),
+    // The rows behind the figures, in one query for the whole month rather
+    // than one per category: the categories partition the same set the
+    // aggregate above just summed.
+    db
+      .select({
+        id: transactions.id,
+        categoryId: transactions.categoryId,
+        budgetRole: transactions.budgetRole,
+        date: transactions.date,
+        amountCents: transactions.amountCents,
+        description: transactions.description,
+        installmentNumber: transactions.installmentNumber,
+        installmentTotal: transactions.installmentTotal,
+        accountName: accounts.name,
+        last4: accounts.last4,
+      })
+      .from(transactions)
+      .innerJoin(accounts, eq(transactions.accountId, accounts.id))
+      .innerJoin(connections, eq(accounts.connectionId, connections.id))
+      .where(
+        and(
+          eq(connections.householdId, householdId),
+          inArray(transactions.budgetRole, ['SPEND', 'INCOME']),
+          gte(budgetMonthSql, monthStart),
+          lte(budgetMonthSql, monthEnd),
+        ),
+      )
+      .orderBy(desc(transactions.date), desc(transactions.id)),
     listCategories(db, householdId),
     listBudgets(db, householdId),
     getHouseholdHealth(db, householdId, opts),
@@ -128,6 +194,32 @@ export async function getMonthView(
   // Keyed on role as well as category: getCategorySpend groups by both, so a
   // category that somehow holds each would otherwise overwrite the other.
   const byCategoryRole = new Map(totals.map((t) => [`${t.categoryId}:${t.budgetRole}`, t]))
+
+  // The detail rows, keyed the same way, so a row's list is drawn from exactly
+  // the rows its figure was summed from.
+  const detailByCategoryRole = new Map<string, MonthTransaction[]>()
+  const countByCategoryRole = new Map<string, number>()
+  for (const row of detail) {
+    const key = `${row.categoryId}:${row.budgetRole}`
+    countByCategoryRole.set(key, (countByCategoryRole.get(key) ?? 0) + 1)
+    const list = detailByCategoryRole.get(key) ?? []
+    if (list.length < DETAIL_LIMIT) {
+      list.push({
+        id: row.id,
+        date: row.date,
+        amountCents:
+          row.budgetRole === 'INCOME' ? toActualCents(row.amountCents, 'RECEITA') : row.amountCents,
+        description: row.description,
+        accountName: row.accountName,
+        last4: row.last4,
+        installment:
+          row.installmentNumber && row.installmentTotal
+            ? `${row.installmentNumber}/${row.installmentTotal}`
+            : null,
+      })
+    }
+    detailByCategoryRole.set(key, list)
+  }
   const budgetsByCategory = groupBudgetsByCategory(budgetRows)
 
   const rows: MonthRow[] = categories.map((category) => {
@@ -142,6 +234,7 @@ export async function getMonthView(
     const committedCents = toActualCents(sums?.committedCents ?? 0, group)
 
     const budget = resolveBudget(budgetsByCategory.get(category.id) ?? [], period)
+    const detailKey = `${category.id}:${role}`
 
     return {
       categoryId: category.id,
@@ -164,6 +257,8 @@ export async function getMonthView(
               // there is no elapsed time to extrapolate a rate from.
               actualCents
             : pace({ variableCents, committedCents, dayOfMonth: elapsedDays, daysInPeriod: daysInMonth }),
+      transactions: detailByCategoryRole.get(detailKey) ?? [],
+      transactionCount: countByCategoryRole.get(detailKey) ?? 0,
     }
   })
 

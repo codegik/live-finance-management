@@ -4,6 +4,7 @@ import { MonthNav } from '@/components/MonthNav'
 import { MonthSummary } from '@/components/MonthSummary'
 import { StaleBanner } from '@/components/StaleBanner'
 import { requireSession, toSignInOrThrow } from '@/lib/auth/session'
+import { listCategories } from '@/lib/db/categories'
 import { getDb } from '@/lib/db/client'
 import { saoPauloPeriod } from '@/lib/domain/dates'
 import { brl, monthLabel } from '@/lib/format'
@@ -35,7 +36,14 @@ export default async function MonthPage({
   const currentPeriod = saoPauloPeriod(new Date())
   const period = PERIOD.test(requested ?? '') ? (requested as string) : currentPeriod
 
-  const view = await getMonthView(getDb(), session.householdId, period)
+  const db = getDb()
+  const [view, categories] = await Promise.all([
+    getMonthView(db, session.householdId, period),
+    // For the inline category picker on each transaction. Live categories
+    // only: an archived one is a legitimate place for old spend to sit, but
+    // never a place to move spend to.
+    listCategories(db, session.householdId),
+  ])
 
   return (
     <main className="page">
@@ -70,6 +78,7 @@ export default async function MonthPage({
           key={group.group}
           group={group}
           stance={view.stance}
+          categories={categories.map((c) => ({ id: c.id, name: c.name }))}
           // Money that belongs in this block's total but has no row to sit on
           // is attached to variable spending, the block it would otherwise
           // silently fall out of. Receita takes the same treatment for income

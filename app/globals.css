@@ -745,3 +745,155 @@ input[type='checkbox'], input[type='radio'] {
 }
 
 .signin__local { margin: 0 0 1rem; }
+
+/* ----------------------------------------------- inbox detail rows -- */
+
+.inbox__detail { min-width: 0; }
+
+/* The whole header is the trigger: "what is in here?" is prompted by the
+   merchant name at least as often as by the count. */
+.inbox__detail > summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.15rem 0.3rem;
+  margin: -0.15rem -0.3rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  list-style: none;
+}
+.inbox__detail > summary::-webkit-details-marker { display: none; }
+.inbox__detail > summary:hover { background: var(--surface-3); }
+
+/* A caret that turns, so the row reads as openable before it is opened. */
+.inbox__detail > summary h2::before {
+  content: '›';
+  display: inline-block;
+  width: 0.9rem;
+  color: var(--text-faint);
+  transition: transform 120ms ease;
+}
+.inbox__detail[open] > summary h2::before { transform: rotate(90deg); }
+
+.inbox__rows {
+  list-style: none;
+  margin: 0.6rem 0 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+/* Two lines, not three columns. A card statement descriptor runs to forty
+   characters of unspaced noise ('SGT*riseguideLimassolCYP') and the card name
+   to another thirty; side by side they collide into one unreadable string,
+   which is exactly what this list existed to untangle. The descriptor gets the
+   full width, and what it was paid with sits under it. */
+.inbox__row {
+  display: grid;
+  grid-template-columns: 3.2rem minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 0.15rem 0.75rem;
+  padding: 0.55rem 0.75rem;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+  list-style: none;
+}
+.inbox__row:last-child { border-bottom: 0; }
+
+.inbox__row-date {
+  font-family: var(--font-num);
+  font-size: 0.78rem;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.inbox__row-desc {
+  min-width: 0;
+  font-size: 0.83rem;
+  /* These descriptors have no spaces to break on, so the browser would push
+     the amount off the row rather than wrap them. */
+  overflow-wrap: anywhere;
+}
+
+/* Its own grid row under the descriptor, aligned with it rather than with the
+   date -- it answers "which card?", which is a footnote, not a column. */
+.inbox__row-account {
+  grid-column: 2 / -1;
+  font-size: 0.72rem;
+  color: var(--text-faint);
+}
+
+.inbox__row-amount {
+  grid-row: 1;
+  grid-column: 3;
+  font-family: var(--font-num);
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.inbox__more { margin: 0.5rem 0 0; color: var(--text-faint); font-size: 0.78rem; }
+
+@media (max-width: 52rem) {
+  /* The date moves above the descriptor rather than stealing width from it. */
+  .inbox__row { grid-template-columns: minmax(0, 1fr) auto; }
+  .inbox__row-date { grid-column: 1; }
+  .inbox__row-desc { grid-column: 1 / -1; }
+  .inbox__row-account { grid-column: 1 / -1; }
+  .inbox__row-amount { grid-row: 1; grid-column: 2; }
+}
+
+/* ------------------------------------------- month row, expandable -- */
+
+/* The row keeps its own grid; the <details> is only a wrapper, so summary has
+   to carry `display` itself or the marker box collapses the layout. */
+.row-detail > summary.row { cursor: pointer; list-style: none; }
+.row-detail > summary.row::-webkit-details-marker { display: none; }
+.row-detail > summary.row:hover { background: var(--surface-2); }
+
+.row-detail > summary.row .row__name::before {
+  content: '›';
+  display: inline-block;
+  width: 0.85rem;
+  color: var(--text-faint);
+  transition: transform 120ms ease;
+}
+.row-detail[open] > summary.row .row__name::before { transform: rotate(90deg); }
+.row-detail[open] > summary.row { background: var(--surface-2); }
+
+/* The list sits inset from the row it explains, so the block still reads as
+   rows rather than as one long run of transactions. */
+.row-detail > .inbox__rows { margin: 0 1rem 0.75rem; }
+.row-detail > .inbox__more { margin: 0 1rem 0.75rem; }
+
+/* The picker sits on the footnote line, beside the card it was paid with. */
+.txn-cat {
+  grid-column: 2 / -1;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.2rem;
+}
+
+.txn-cat select {
+  padding: 0.15rem 0.35rem;
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-faint);
+  font-size: 0.72rem;
+  max-width: 12rem;
+}
+/* Invisible until the row is under the pointer: every transaction carries one,
+   and twenty boxed selects would read as a form rather than as a list. */
+.inbox__row:hover .txn-cat select,
+.txn-cat select:focus { border-color: var(--border); color: var(--text); }
+.txn-cat select:disabled { opacity: 0.5; }
+
+.txn-cat__ok { color: var(--pos); font-size: 0.72rem; }
+.txn-cat .form__error { font-size: 0.72rem; }
+
+@media (max-width: 52rem) {
+  .txn-cat { grid-column: 1 / -1; }
+  .txn-cat select { border-color: var(--border); color: var(--text); }
+}

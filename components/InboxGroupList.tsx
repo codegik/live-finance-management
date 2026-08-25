@@ -24,6 +24,64 @@ function countLabel(count: number): string {
   return count === 1 ? '1 lançamento' : `${count} lançamentos`
 }
 
+/** `2026-08-17` as `17/08`, which is how a statement is read. */
+function shortDate(date: string): string {
+  return `${date.slice(8, 10)}/${date.slice(5, 7)}`
+}
+
+/**
+ * The group's header, and the rows behind its count and total.
+ *
+ * A native <details>, not a modal: there is nothing to decide here, only
+ * something to look at, and a dialog would take the household out of the very
+ * form it is deciding about. It also costs no JavaScript, keeps its own
+ * open/closed state through a re-render, and is keyboard-operable without a
+ * line of code.
+ *
+ * The whole header is the <summary>, so the merchant name is as clickable as
+ * the count -- the question "what is in here?" is prompted by the name at
+ * least as often as by the number.
+ */
+function GroupDetail({ group }: { group: InboxGroup }) {
+  const label = group.merchant ?? group.sampleDescription
+  const hidden = group.count - group.transactions.length
+
+  return (
+    <details className="inbox__detail">
+      <summary className="inbox__group-header">
+        <h2>{label}</h2>
+        <span className="inbox__group-meta">
+          {countLabel(group.count)} · {formatCents(group.totalCents)}
+        </span>
+      </summary>
+
+      <ul className="inbox__rows">
+        {group.transactions.map((transaction) => (
+          <li key={transaction.id} className="inbox__row">
+            <span className="inbox__row-date">{shortDate(transaction.date)}</span>
+            <span className="inbox__row-desc">{transaction.description}</span>
+            <span className="inbox__row-amount">{formatCents(transaction.amountCents)}</span>
+            <span className="inbox__row-account">
+              {transaction.accountName}
+              {transaction.last4 ? ` ···· ${transaction.last4}` : null}
+            </span>
+          </li>
+        ))}
+      </ul>
+
+      {/* Said out loud rather than silently truncated: the header counts every
+          row, so a shorter list presented as complete is how someone concludes
+          the count is wrong. */}
+      {hidden > 0 ? (
+        <p className="inbox__more">
+          Mostrando {group.transactions.length} de {group.count}. Categorize estes e os restantes
+          aparecem em seguida.
+        </p>
+      ) : null}
+    </details>
+  )
+}
+
 function GroupForm({
   group,
   categories,
@@ -38,17 +96,11 @@ function GroupForm({
   // merchant and to EXACT when the fields do not submit, and it reads none of
   // that unless createRule came back 'on'.
   const [createRule, setCreateRule] = useState(true)
-  const label = group.merchant ?? group.sampleDescription
 
   return (
     <form action={formAction} className="inbox__group">
       <input type="hidden" name="merchant" value={group.merchant ?? ''} />
-      <header className="inbox__group-header">
-        <h2>{label}</h2>
-        <span className="inbox__group-meta">
-          {countLabel(group.count)} · {formatCents(group.totalCents)}
-        </span>
-      </header>
+      <GroupDetail group={group} />
 
       {/* A visible "Categoria" caption above a select whose first option
           already says what it is would be the same word twice on a card the

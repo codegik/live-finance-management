@@ -22,6 +22,8 @@ function row(over: Partial<MonthRow>): MonthRow {
     variableCents: 0,
     committedCents: 0,
     paceCents: 0,
+    transactions: [],
+    transactionCount: 0,
     ...over,
   }
 }

@@ -466,3 +466,71 @@ it('never renders a month with no income as having earned minus nothing', async 
     expect(Object.is(row.variableCents, -0)).toBe(false)
   }
 })
+
+it('carries the transactions behind each category figure', async () => {
+  const { db, householdId, accountId } = await seedHousehold()
+  const supermarket = await categoryNamed(householdId, 'Supermercado')
+  for (const [date, amount] of [
+    ['2026-08-05', 30_000],
+    ['2026-08-19', 12_550],
+  ] as const) {
+    await insertTransaction(db, accountId, {
+      description: 'ZAFFARI',
+      amountCents: amount,
+      date,
+      pluggyCategory: 'Groceries',
+    })
+  }
+  await recategorize(db, { householdId })
+
+  const view = await getMonthView(db, householdId, PERIOD, { now: NOW })
+  const row = allRows(view).find((r) => r.categoryId === supermarket)!
+
+  // The figure is an aggregate; the list has to be the same rows, or the panel
+  // contradicts the number that opened it.
+  expect(row.transactionCount).toBe(2)
+  expect(row.transactions.reduce((sum, t) => sum + t.amountCents, 0)).toBe(row.actualCents)
+  expect(row.transactions.map((t) => t.date)).toEqual(['2026-08-19', '2026-08-05'])
+  expect(row.transactions[0].accountName).toBeTruthy()
+})
+
+it('points a Receita transaction the same way its row points', async () => {
+  const { db, householdId } = await seedHousehold()
+  const bank = await seedAccount(db, (await db.select().from(connections))[0].id, { type: 'BANK' })
+  await insertTransaction(db, bank, {
+    description: 'SALARIO',
+    amountCents: -49_550_00,
+    date: '2026-08-05',
+    pluggyCategory: 'Salary',
+  })
+  await refreshBudgetRoles(db, householdId)
+  await recategorize(db, { householdId })
+
+  const view = await getMonthView(db, householdId, PERIOD, { now: NOW })
+  const row = view.groups
+    .find((g) => g.group === 'RECEITA')!
+    .rows.find((r) => r.categoryName === 'Salário')!
+
+  // Income is stored negative. A row reading R$ 49.550,00 whose detail list
+  // reads -R$ 49.550,00 is worse than no detail list at all.
+  expect(row.transactions[0].amountCents).toBe(49_550_00)
+  expect(row.transactions[0].amountCents).toBe(row.actualCents)
+})
+
+it('names which instalment a repeated figure is', async () => {
+  const { db, householdId, accountId } = await seedHousehold()
+  await insertTransaction(db, accountId, {
+    description: 'AUTO MECANICA BOA 05/10',
+    amountCents: 114_709,
+    date: '2026-08-17',
+    pluggyCategory: 'Vehicle maintenance',
+  })
+  await recategorize(db, { householdId })
+
+  const view = await getMonthView(db, householdId, PERIOD, { now: NOW })
+  const row = allRows(view).find((r) => r.categoryName === 'Manutenção de carro')!
+
+  // R$ 1.147,09 appearing in ten consecutive months is unexplainable without
+  // this.
+  expect(row.transactions[0].installment).toBe('5/10')
+})

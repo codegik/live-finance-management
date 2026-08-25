@@ -113,3 +113,46 @@ it('keeps invoice payments out of the inbox, since they are not work', async () 
   expect(view.groups.map((g) => g.merchant)).toEqual(['ZAFFARI'])
   expect(await countUncategorized(db, householdId)).toBe(1)
 })
+
+it('carries the rows behind each group, newest first', async () => {
+  const { db, householdId, accountId } = await seedHousehold()
+  for (const [date, amount] of [
+    ['2026-08-01', 1_000],
+    ['2026-08-17', 2_231],
+    ['2026-08-09', 500],
+  ] as const) {
+    await insertTransaction(db, accountId, {
+      description: 'SPREAD DE CAMBIO',
+      amountCents: amount,
+      date,
+    })
+  }
+
+  const view = await getInboxView(db, householdId)
+  const group = view.groups.find((g) => g.merchant === 'SPREAD DE CAMBIO')!
+
+  // The header's count and total are an aggregate; the detail list has to be
+  // the same rows, or the panel contradicts the line that opened it.
+  expect(group.count).toBe(3)
+  expect(group.transactions).toHaveLength(3)
+  expect(group.transactions.reduce((sum, t) => sum + t.amountCents, 0)).toBe(group.totalCents)
+  expect(group.transactions.map((t) => t.date)).toEqual([
+    '2026-08-17',
+    '2026-08-09',
+    '2026-08-01',
+  ])
+  // Which card it was on is the thing a descriptor alone cannot tell you.
+  expect(group.transactions[0].accountName).toBeTruthy()
+})
+
+it('keeps the rows of the group that has no usable merchant', async () => {
+  const { db, householdId, accountId } = await seedHousehold()
+  await insertTransaction(db, accountId, { description: '***', amountCents: 900 })
+
+  const view = await getInboxView(db, householdId)
+  const group = view.groups.find((g) => g.merchant === null)
+
+  // Null keys the aggregate and the detail map alike. Dropped, this bucket
+  // would show a count with an empty panel behind it.
+  expect(group?.transactions).toHaveLength(1)
+})
