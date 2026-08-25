@@ -1,5 +1,5 @@
 import { and, desc, eq, gte, ilike, inArray, isNull, lte, or } from 'drizzle-orm'
-import type { BudgetRole } from '@/lib/domain/budget-role'
+import { type BudgetRole, resolveBudgetRole } from '@/lib/domain/budget-role'
 import { categoryBelongsToHousehold } from './categories'
 import type { Db, Executor } from './client'
 import { escapeLike } from './like'
@@ -110,6 +110,57 @@ export function householdTransactionIds(exec: Executor, householdId: string) {
 }
 
 /**
+ * Re-derives budget_role for rows whose category just changed, in the same
+ * edit.
+ *
+ * Filing a row under the TRANSFER category ('Pagamento de cartão') has to take
+ * it out of every total at once, not only at the next nightly reconcile -- the
+ * household categorizes a fatura payment precisely to watch Despesas drop.
+ * Moving it back to an ordinary category returns it to its direction-derived
+ * role in the same edit. This calls resolveBudgetRole, the exact decision the
+ * nightly refreshBudgetRoles pass makes, so the inline edit and the batch pass
+ * can never disagree about the same row.
+ */
+export async function refreshRolesForTransactions(
+  exec: Executor,
+  householdId: string,
+  transactionIds: string[],
+): Promise<void> {
+  if (transactionIds.length === 0) return
+
+  const rows = await exec
+    .select({
+      id: transactions.id,
+      pluggyCategory: transactions.pluggyCategory,
+      amountCents: transactions.amountCents,
+      budgetRole: transactions.budgetRole,
+      accountType: accounts.type,
+      categoryGroup: categories.group,
+    })
+    .from(transactions)
+    .innerJoin(accounts, eq(transactions.accountId, accounts.id))
+    .leftJoin(categories, eq(transactions.categoryId, categories.id))
+    .where(
+      and(
+        inArray(transactions.id, transactionIds),
+        inArray(transactions.id, householdTransactionIds(exec, householdId)),
+      ),
+    )
+
+  for (const row of rows) {
+    const role = resolveBudgetRole(row.categoryGroup ?? null, row.pluggyCategory, {
+      accountType: row.accountType,
+      amountCents: row.amountCents,
+    })
+    if (role === row.budgetRole) continue
+    await exec
+      .update(transactions)
+      .set({ budgetRole: role, updatedAt: new Date() })
+      .where(eq(transactions.id, row.id))
+  }
+}
+
+/**
  * A hand-set category. MANUAL is what protects it from every later sync.
  *
  * Deferred seam: per-transaction correction lands in Slice 3. Today the inbox
@@ -139,6 +190,10 @@ export async function setTransactionCategory(
         inArray(transactions.id, householdTransactionIds(exec, householdId)),
       ),
     )
+
+  // Filing under a TRANSFER category must drop the row from the totals now, not
+  // at the next reconcile. See refreshRolesForTransactions.
+  await refreshRolesForTransactions(exec, householdId, [transactionId])
 }
 
 /**
@@ -173,6 +228,14 @@ export async function setCategoryForMerchant(
       ),
     )
     .returning({ id: transactions.id })
+
+  // Filing under a TRANSFER category must drop these rows from the totals now,
+  // not at the next reconcile. See refreshRolesForTransactions.
+  await refreshRolesForTransactions(
+    exec,
+    householdId,
+    rows.map((row) => row.id),
+  )
 
   return { changed: rows.length }
 }

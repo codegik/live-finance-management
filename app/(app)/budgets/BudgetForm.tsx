@@ -35,6 +35,9 @@ const TITLE_CLASS: Record<CategoryGroup, string> = {
   INVESTIMENTO: 'block__title--investimento',
   DESPESA_FIXA: 'block__title--fixa',
   DESPESA_VARIAVEL: 'block__title--variavel',
+  // Never rendered: the planner iterates CATEGORY_GROUPS, which omits TRANSFER.
+  // Present only to satisfy the exhaustive Record.
+  TRANSFER: 'block__title--variavel',
 }
 
 function PlanRow({ row }: { row: BudgetEditorRow }) {

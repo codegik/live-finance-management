@@ -1,7 +1,7 @@
 import { and, eq, inArray, isNull, like, ne, or } from 'drizzle-orm'
 import type { Executor } from '@/lib/db/client'
 import { escapeLike } from '@/lib/db/like'
-import { householdTransactionIds } from '@/lib/db/transactions'
+import { householdTransactionIds, refreshRolesForTransactions } from '@/lib/db/transactions'
 import { categories, merchantRules, transactions } from '@/lib/db/schema'
 import { normalizeMerchant, resolveCategory } from '@/lib/domain/categorize'
 
@@ -92,6 +92,14 @@ export async function recategorize(
     .where(and(...filters))
 
   let changed = 0
+  // The rows whose category actually moved. Their budget_role is re-derived
+  // once at the end: a row filed under the TRANSFER category ('Pagamento de
+  // cartão') must leave the totals in the same pass, and one moved back out of
+  // it must return to SPEND -- so a rule create/delete corrects the role, not
+  // only the category. The nightly reconcile runs a household-wide role pass
+  // right after this anyway; refreshing here is what makes the inbox rule take
+  // effect immediately. See refreshRolesForTransactions.
+  const movedIds: string[] = []
 
   for (const row of rows) {
     const merchantNormalized = normalizeMerchant(row.merchantRaw ?? row.description)
@@ -123,7 +131,10 @@ export async function recategorize(
       .where(eq(transactions.id, row.id))
 
     changed += 1
+    if (next.categoryId !== row.categoryId) movedIds.push(row.id)
   }
+
+  await refreshRolesForTransactions(exec, scope.householdId, movedIds)
 
   return { changed }
 }

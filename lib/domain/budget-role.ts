@@ -94,6 +94,8 @@
  * reach three years of already-stored rows at all. Until that pass runs, the
  * stored roles are whatever the previous rule decided.
  */
+import { type CategoryGroup, GROUP_BUDGET_ROLE } from './seed-categories'
+
 export type BudgetRole = 'SPEND' | 'TRANSFER' | 'INCOME'
 
 /**
@@ -162,4 +164,32 @@ export function classifyRole(
   // category it reverses. Reading it as income would turn every refund into
   // household earnings.
   return 'SPEND'
+}
+
+/**
+ * The row's role, letting a category the household filed it under have the
+ * final say when that category means "do not total this".
+ *
+ * The one thing a category may force is TRANSFER. Filing a payment under a
+ * TRANSFER category -- 'Pagamento de cartão' -- is the household stating that
+ * this row is an invoice payment its card purchases already account for, so it
+ * must leave every total whatever Pluggy called the row. This is the only path
+ * that reaches a fatura payment Pluggy tagged 'Transfers' on a bank account,
+ * where direction alone would otherwise make it SPEND (see the note above), and
+ * the only path at all for a card the household never linked.
+ *
+ * INCOME and SPEND are NOT forced from the category: a normal category must
+ * never override the direction of the money, or an arriving estorno filed under
+ * a spend category would flip sign and corrupt that category. Those two still
+ * derive from the row itself, exactly as before. Everything but TRANSFER falls
+ * straight through to classifyRole, so a row with no category, or one under any
+ * ordinary category, is classified precisely as it always was.
+ */
+export function resolveBudgetRole(
+  categoryGroup: CategoryGroup | null,
+  pluggyCategory: string | null | undefined,
+  context: RoleContext,
+): BudgetRole {
+  if (categoryGroup && GROUP_BUDGET_ROLE[categoryGroup] === 'TRANSFER') return 'TRANSFER'
+  return classifyRole(pluggyCategory, context)
 }

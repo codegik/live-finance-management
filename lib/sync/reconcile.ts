@@ -76,21 +76,27 @@ export async function reconcileAll(
       // row MANUAL -- which no sync or backfill ever revisits.
       await seedCategories(db, householdId)
       await seedDefaultRules(db, householdId)
+      // BEFORE refreshBudgetRoles, and the order is now load-bearing: a row's
+      // role can be forced by the category it sits under -- a fatura payment
+      // filed under the TRANSFER category leaves every total -- so the category
+      // must be resolved before the role pass reads it. See resolveBudgetRole
+      // and lib/sync/budget-roles.ts.
+      const { changed } = await recategorize(db, { householdId })
+      recategorized += changed
       // The only pass that corrects budget_role on a row the mapper did not
-      // touch -- one whose Pluggy category changed since the last sync, or
-      // one 0009 backfilled and the connector has since re-categorized.
-      //
-      // Order relative to recategorize is NOT load-bearing: the two passes
-      // key on independent columns (budget_role vs category_id), and
-      // recategorize produces no inbox count for this one to influence.
+      // touch -- one whose Pluggy category changed since the last sync, one
+      // 0009 backfilled and the connector has since re-categorized, or one the
+      // household just filed under a TRANSFER category above. Re-derives every
+      // row from the live category, so moving a payment out of the card-payment
+      // category returns it to SPEND here with no migration.
       const { changed: roled } = await refreshBudgetRoles(db, householdId)
       rolesCorrected += roled
-      // Same reasoning, and the same independence: this pass keys on
-      // installment_number/total, which nothing else writes. It is here
-      // rather than only at ingest because drizzle/0006 added those columns
-      // with no backfill and Pluggy never re-delivers an old transaction --
-      // so every row that predates the columns is NULL until something goes
-      // back and reads its descriptor. See lib/sync/installments.ts.
+      // This pass keys on installment_number/total, which nothing else writes.
+      // It is here rather than only at ingest because drizzle/0006 added those
+      // columns with no backfill and Pluggy never re-delivers an old
+      // transaction -- so every row that predates the columns is NULL until
+      // something goes back and reads its descriptor. See
+      // lib/sync/installments.ts.
       const { changed: parcels } = await refreshInstallments(db, householdId)
       installmentsCorrected += parcels
       // AFTER refreshInstallments, and the order is load-bearing: the billing
@@ -99,8 +105,6 @@ export async function reconcileAll(
       // would be shifted a second time and land a month late.
       const { changed: months } = await refreshBudgetMonths(db, householdId)
       budgetMonthsCorrected += months
-      const { changed } = await recategorize(db, { householdId })
-      recategorized += changed
     } catch (error) {
       // Same try/catch as before, now covering the seed too: a failure to
       // seed one household must not stop the others being recategorized.

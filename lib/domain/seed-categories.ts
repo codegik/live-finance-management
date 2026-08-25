@@ -9,6 +9,13 @@ export type SeedCategory = { seedKey: string; name: string; group: CategoryGroup
  * The order the blocks are drawn in, and the only place that order is
  * decided. It follows the sheet the household already keeps: what came in,
  * what was set aside, what was always going to be spent, what was chosen.
+ *
+ * TRANSFER is deliberately absent: it is not a block on the sheet. Its
+ * categories hold money that was already counted where it was spent -- a
+ * credit-card invoice payment, an own-account transfer -- so drawing it as a
+ * block would either double-count it or invite the household to budget for it.
+ * It exists only so a row can be filed OUT of every total while staying in the
+ * ledger. See GROUP_BUDGET_ROLE and lib/views/month.ts.
  */
 export const CATEGORY_GROUPS: readonly CategoryGroup[] = [
   'RECEITA',
@@ -22,6 +29,7 @@ export const CATEGORY_GROUP_LABELS: Record<CategoryGroup, string> = {
   INVESTIMENTO: 'Investimento',
   DESPESA_FIXA: 'Despesas fixas',
   DESPESA_VARIAVEL: 'Despesas variáveis',
+  TRANSFER: 'Pagamentos de cartão',
 }
 
 /**
@@ -34,11 +42,16 @@ export const CATEGORY_GROUP_LABELS: Record<CategoryGroup, string> = {
  * positive for money out (lib/domain/money.ts), so income lands negative and
  * would otherwise render as -R$ 49.550,00.
  */
-export const GROUP_BUDGET_ROLE: Record<CategoryGroup, 'SPEND' | 'INCOME'> = {
+export const GROUP_BUDGET_ROLE: Record<CategoryGroup, 'SPEND' | 'INCOME' | 'TRANSFER'> = {
   RECEITA: 'INCOME',
   INVESTIMENTO: 'SPEND',
   DESPESA_FIXA: 'SPEND',
   DESPESA_VARIAVEL: 'SPEND',
+  // A category the household files a fatura payment under. Its role is
+  // TRANSFER, which every spend and income query excludes by design, so the
+  // row leaves the totals the moment it is filed here -- while staying visible
+  // in the ledger like any other. See lib/domain/budget-role.ts.
+  TRANSFER: 'TRANSFER',
 }
 
 /**
@@ -54,6 +67,9 @@ export const MORE_IS_BETTER: Record<CategoryGroup, boolean> = {
   INVESTIMENTO: true,
   DESPESA_FIXA: false,
   DESPESA_VARIAVEL: false,
+  // Never read: TRANSFER is not a drawn block, so no row in it reaches the
+  // over/under paint. Present only to satisfy the exhaustive Record.
+  TRANSFER: false,
 }
 
 /**
@@ -118,4 +134,10 @@ export const SEED_CATEGORIES: SeedCategory[] = [
   { seedKey: 'invest-portfolio', name: 'Carteira de investimento', group: 'INVESTIMENTO' },
   { seedKey: 'invest-pension', name: 'Previdência', group: 'INVESTIMENTO' },
   { seedKey: 'invest-emergency', name: 'Reserva de emergência', group: 'INVESTIMENTO' },
+  // Not a spend line: a credit-card invoice paid from the checking account,
+  // which the card's own purchases already account for. Filing a payment here
+  // is how the household excludes it from Despesas without hiding it from the
+  // ledger, and it works for a card Pluggy never linked -- the payment still
+  // shows on the bank account. See lib/domain/budget-role.ts.
+  { seedKey: 'card-payment', name: 'Pagamento de cartão', group: 'TRANSFER' },
 ]

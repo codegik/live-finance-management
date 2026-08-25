@@ -68,15 +68,25 @@ export const budgetRoleEnum = pgEnum('budget_role', ['SPEND', 'TRANSFER', 'INCOM
 /**
  * The block a category belongs to on the household's month view.
  *
- * The four blocks are the ones the household already keeps by hand. The group
- * also decides which budget role a category's actuals are read from: RECEITA
- * reads INCOME rows, every other group reads SPEND. See lib/views/month.ts.
+ * The four drawn blocks are the ones the household already keeps by hand. The
+ * group also decides which budget role a category's actuals are read from:
+ * RECEITA reads INCOME rows, TRANSFER reads TRANSFER rows, every other group
+ * reads SPEND. See lib/views/month.ts.
+ *
+ * TRANSFER is not one of the drawn blocks (see CATEGORY_GROUPS): a category in
+ * it -- a credit-card invoice payment leaving checking, money moved between the
+ * household's own accounts -- is money that was already counted where it was
+ * spent, so it must show in the ledger yet stay out of every total. Assigning a
+ * transaction to a TRANSFER category is the household's own way of saying "this
+ * is a fatura payment", which is why it exists as a category group and not only
+ * as the Pluggy-driven role. See lib/domain/budget-role.ts.
  */
 export const categoryGroupEnum = pgEnum('category_group', [
   'RECEITA',
   'INVESTIMENTO',
   'DESPESA_FIXA',
   'DESPESA_VARIAVEL',
+  'TRANSFER',
 ])
 
 export const connections = pgTable(

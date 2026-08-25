@@ -1,9 +1,11 @@
+import { eq } from 'drizzle-orm'
 import { beforeEach, expect, it } from 'vitest'
 import { hashPassword } from '@/lib/auth/password'
 import { setBudget } from '@/lib/db/budgets'
 import { archiveCategory, listCategories } from '@/lib/db/categories'
 import { createHousehold } from '@/lib/db/households'
 import { connections } from '@/lib/db/schema'
+import { setTransactionCategory } from '@/lib/db/transactions'
 import { recategorize } from '@/lib/sync/categorize'
 import { refreshBudgetRoles } from '@/lib/sync/budget-roles'
 import { getMonthView, type MonthRow } from '@/lib/views/month'
@@ -138,6 +140,67 @@ it('leaves invoice payments out of every figure', async () => {
 
   expect(totalSpent(view)).toBe(30_000)
   expect(allRows(view).every((r) => r.actualCents >= 0)).toBe(true)
+})
+
+// The reported bug: a credit-card fatura paid from the Nubank checking account
+// -- 'Pagamento efetuado | ITAU UNIBANCO HOLDING' -- came through as an
+// outgoing 'Transfers' on a BANK account, which direction alone reads as SPEND.
+// It then double-counted the card's own purchases, which are already counted in
+// the fatura month, inflating Despesas. Filing it under the TRANSFER category
+// 'Pagamento de cartão' is the household's fix, and it must take the payment out
+// of the totals while leaving the purchase counted.
+it('drops a fatura payment from expenses once it is filed under Pagamento de cartão', async () => {
+  const { db, householdId, accountId } = await seedHousehold()
+  // A real card purchase, on the connected credit card: this is the money that
+  // must STILL be counted after the payment is excluded.
+  await insertTransaction(db, accountId, {
+    description: 'ZAFFARI',
+    amountCents: 30_000,
+    date: '2026-08-05',
+    pluggyCategory: 'Groceries',
+  })
+
+  // The fatura payment, leaving the Nubank CHECKING account. On a bank account
+  // direction decides, so an outgoing 'Transfers' is SPEND until it is filed.
+  const [connection] = await db
+    .select({ id: connections.id })
+    .from(connections)
+    .where(eq(connections.householdId, householdId))
+  const bankAccountId = await seedAccount(db, connection.id, {
+    type: 'BANK',
+    name: 'Nu Pagamentos',
+  })
+  const payment = await insertTransaction(db, bankAccountId, {
+    description: 'Pagamento efetuado|ITAU UNIBANCO HOLDING S.A.',
+    amountCents: 3_582_189,
+    date: '2026-08-10',
+    pluggyCategory: 'Transfers',
+  })
+  await recategorize(db, { householdId })
+  await refreshBudgetRoles(db, householdId)
+
+  // Before filing: the payment is counted, and the month is overstated by
+  // exactly it -- the double count the household noticed.
+  const before = await getMonthView(db, householdId, PERIOD, { now: NOW })
+  expect(before.expenseCents).toBe(30_000 + 3_582_189)
+  expect(before.uncategorizedSpentCents).toBe(3_582_189)
+
+  // File it under the TRANSFER category, the way the household would from the
+  // inbox or the ledger picker.
+  const cardPayment = await categoryNamed(householdId, 'Pagamento de cartão')
+  await setTransactionCategory(db, householdId, payment, cardPayment)
+
+  const after = await getMonthView(db, householdId, PERIOD, { now: NOW })
+  // The purchase stays; the payment is gone from every total.
+  expect(after.expenseCents).toBe(30_000)
+  expect(after.uncategorizedSpentCents).toBe(0)
+  expect(allRows(after).every((r) => r.actualCents >= 0)).toBe(true)
+
+  // And the nightly role pass must not undo it: the category is what forces the
+  // role now, so re-deriving every row keeps the payment a TRANSFER.
+  await refreshBudgetRoles(db, householdId)
+  const nightly = await getMonthView(db, householdId, PERIOD, { now: NOW })
+  expect(nightly.expenseCents).toBe(30_000)
 })
 
 it('counts only the month asked about', async () => {

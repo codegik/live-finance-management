@@ -5,6 +5,7 @@ import { expect, it } from 'vitest'
 import {
   classifyRole,
   INCOME_PLUGGY_CATEGORIES,
+  resolveBudgetRole,
   TRANSFER_PLUGGY_CATEGORIES,
 } from '@/lib/domain/budget-role'
 
@@ -120,6 +121,40 @@ it('treats an absent category as spending rather than guessing', () => {
   expect(classifyRole(null, cardOut)).toBe('SPEND')
   expect(classifyRole(undefined, cardOut)).toBe('SPEND')
   expect(classifyRole('', cardOut)).toBe('SPEND')
+})
+
+it('lets a TRANSFER category force a fatura payment out of the totals', () => {
+  // The regression this feature exists for. A credit-card invoice paid from
+  // the Nubank checking account -- 'Pagamento efetuado | ITAU UNIBANCO HOLDING'
+  // -- comes through as an OUTGOING 'Transfers' on a BANK account, which
+  // direction alone (and classifyRole) reads as SPEND. It then double-counts
+  // the card's own purchases, which are already counted in the fatura month.
+  // Filing it under a TRANSFER category is the household saying "already
+  // counted", and that must win.
+  expect(classifyRole('Transfers', bankOut)).toBe('SPEND') // what it was
+  expect(resolveBudgetRole('TRANSFER', 'Transfers', bankOut)).toBe('TRANSFER') // what it is now
+
+  // Works for a card Pluggy never linked: the only record is the payment on the
+  // bank account, and any Pluggy string on it still yields TRANSFER once filed.
+  expect(resolveBudgetRole('TRANSFER', null, bankOut)).toBe('TRANSFER')
+  expect(resolveBudgetRole('TRANSFER', 'Services', bankOut)).toBe('TRANSFER')
+})
+
+it('never lets an ordinary category override the direction of the money', () => {
+  // Only TRANSFER is forced. A normal category must not flip a row's role, or
+  // an arriving estorno filed under a spend category would read as SPEND and
+  // corrupt that category's total. Income and spend still come from the row.
+  expect(resolveBudgetRole('DESPESA_VARIAVEL', 'Transfers', bankIn)).toBe('INCOME')
+  expect(resolveBudgetRole('DESPESA_VARIAVEL', 'Groceries', bankOut)).toBe('SPEND')
+  expect(resolveBudgetRole('RECEITA', 'Groceries', bankOut)).toBe('SPEND')
+})
+
+it('resolves to classifyRole when nothing is filed on the row', () => {
+  // A row with no category is classified exactly as before -- the feature adds
+  // a possible override, it does not change the default path.
+  expect(resolveBudgetRole(null, 'Transfers', bankOut)).toBe('SPEND')
+  expect(resolveBudgetRole(null, 'Credit card payment', bankOut)).toBe('TRANSFER')
+  expect(resolveBudgetRole(null, null, bankIn)).toBe('INCOME')
 })
 
 it('keeps income and transfer disjoint', () => {
