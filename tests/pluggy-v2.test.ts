@@ -85,7 +85,7 @@ it('uses the account-currency amount for a foreign-currency transaction', () => 
       date: '2026-08-20T03:00:00.000Z',
       type: 'DEBIT',
     },
-    'internal-account-id',
+    { id: 'internal-account-id', type: 'CREDIT' },
   )
 
   expect(mapped.amountCents).toBe(17125)
@@ -103,7 +103,7 @@ it('uses amount when the transaction is already in the account currency', () => 
       date: '2026-08-20T03:00:00.000Z',
       type: 'DEBIT',
     },
-    'internal-account-id',
+    { id: 'internal-account-id', type: 'CREDIT' },
   )
 
   expect(mapped.amountCents).toBe(28490)
@@ -127,7 +127,7 @@ it('roles an invoice payment as a transfer at map time', () => {
       type: 'CREDIT',
       category: 'Credit card payment',
     },
-    'internal-account-id',
+    { id: 'internal-account-id', type: 'CREDIT' },
   )
 
   expect(mapped.budgetRole).toBe('TRANSFER')
@@ -147,7 +147,7 @@ it('records the instalment parts of the descriptor at map time', () => {
       type: 'DEBIT',
       category: 'Supermarkets',
     },
-    'internal-account-id',
+    { id: 'internal-account-id', type: 'CREDIT' },
   )
 
   expect(mapped.budgetRole).toBe('SPEND')

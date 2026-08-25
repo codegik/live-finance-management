@@ -218,6 +218,39 @@ it('reports uncategorized spend separately rather than hiding it', async () => {
   expect(allRows(view).every((r) => r.categoryId !== null)).toBe(true)
 })
 
+it('carries the transactions behind the uncategorized figure', async () => {
+  const { db, householdId, accountId } = await seedHousehold()
+  for (const [date, amount] of [
+    ['2026-08-05', 5_000],
+    ['2026-08-19', 1_250],
+  ] as const) {
+    await insertTransaction(db, accountId, {
+      description: 'ALGO DESCONHECIDO',
+      amountCents: amount,
+      date,
+    })
+  }
+
+  const view = await getMonthView(db, householdId, PERIOD, { now: NOW })
+
+  // "Não categorizado" is not a category row, so nothing else can answer
+  // "what IS that?" for it. The list has to be the same rows the figure was
+  // summed from, or the panel contradicts the number that opened it.
+  expect(view.uncategorizedDetail.transactionCount).toBe(2)
+  expect(
+    view.uncategorizedDetail.transactions.reduce((sum, t) => sum + t.amountCents, 0),
+  ).toBe(view.uncategorizedSpentCents)
+  expect(view.uncategorizedDetail.transactions.map((t) => t.date)).toEqual([
+    '2026-08-19',
+    '2026-08-05',
+  ])
+  // Null, not some arbitrary category: the inline picker reads this to decide
+  // whether to offer a real selection or a disabled "a categorizar", and a
+  // preselected category would present an unfiled charge as already filed.
+  expect(view.uncategorizedDetail.transactions.every((t) => t.categoryId === null)).toBe(true)
+  expect(view.uncategorizedDetail.transactions[0].accountName).toBeTruthy()
+})
+
 it('carries connection health so a month can never read as on track while stale', async () => {
   const { db, householdId } = await seedHousehold()
 
@@ -384,6 +417,13 @@ it('puts the spend of an archived category in a row of its own rather than losin
   expect(view.archivedSpentCents).toBe(30_000)
   expect(view.uncategorizedSpentCents).toBe(0)
   expect(view.expenseCents).toBe(30_000)
+
+  // And openable, for the same reason it is named: a figure nobody can
+  // interrogate is a figure that gets disbelieved. The row still points at the
+  // archived category, which is where it legitimately rests.
+  expect(view.archivedDetail.transactionCount).toBe(1)
+  expect(view.archivedDetail.transactions[0].amountCents).toBe(view.archivedSpentCents)
+  expect(view.archivedDetail.transactions[0].categoryId).toBe(supermarket)
 })
 
 // --- Where the month sits relative to today ----------------------------
@@ -533,4 +573,76 @@ it('names which instalment a repeated figure is', async () => {
   // R$ 1.147,09 appearing in ten consecutive months is unexplainable without
   // this.
   expect(row.transactions[0].installment).toBe('5/10')
+})
+
+// --- A connected checking account. Every one of these was invisible before:
+// --- Pluggy labels a PIX 'Transfers', and that string excluded the row from
+// --- every budgeting figure.
+
+it('shows an outgoing PIX as spending in the month view', async () => {
+  const { db, householdId } = await seedHousehold()
+  const checking = await seedAccount(db, (await db.select().from(connections))[0].id, {
+    type: 'BANK',
+    name: 'Nu Pagamentos',
+  })
+  await insertTransaction(db, checking, {
+    description: 'PIX ENVIADO JOAO',
+    amountCents: 50_000,
+    date: '2026-08-05',
+    pluggyCategory: 'Transfers',
+  })
+  await refreshBudgetRoles(db, householdId)
+
+  const view = await getMonthView(db, householdId, PERIOD, { now: NOW })
+
+  expect(view.expenseCents).toBe(50_000)
+  // Uncategorized, so it lands in the inbox where the household files it --
+  // visible, rather than silently dropped.
+  expect(view.uncategorizedCount).toBe(1)
+})
+
+it('shows an arriving PIX as Receita', async () => {
+  const { db, householdId } = await seedHousehold()
+  const checking = await seedAccount(db, (await db.select().from(connections))[0].id, {
+    type: 'BANK',
+  })
+  await insertTransaction(db, checking, {
+    description: 'PIX RECEBIDO',
+    amountCents: -80_000,
+    date: '2026-08-05',
+    pluggyCategory: 'Transfers',
+  })
+  await refreshBudgetRoles(db, householdId)
+
+  const view = await getMonthView(db, householdId, PERIOD, { now: NOW })
+
+  expect(view.incomeCents).toBe(80_000)
+  expect(view.expenseCents).toBe(0)
+})
+
+it('still never counts the invoice payment leaving checking', async () => {
+  const { db, householdId, accountId } = await seedHousehold()
+  const checking = await seedAccount(db, (await db.select().from(connections))[0].id, {
+    type: 'BANK',
+  })
+  await insertTransaction(db, accountId, {
+    description: 'ZAFFARI',
+    amountCents: 30_000,
+    date: '2026-08-05',
+    pluggyCategory: 'Groceries',
+  })
+  await insertTransaction(db, checking, {
+    description: 'PAGAMENTO FATURA CARTAO',
+    amountCents: 30_000,
+    date: '2026-08-10',
+    pluggyCategory: 'Credit card payment',
+  })
+  await refreshBudgetRoles(db, householdId)
+  await recategorize(db, { householdId })
+
+  const view = await getMonthView(db, householdId, PERIOD, { now: NOW })
+
+  // The card purchase is already counted in the month its fatura falls due.
+  // Counting the payment that settles it would count every card purchase twice.
+  expect(view.expenseCents).toBe(30_000)
 })

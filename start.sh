@@ -64,6 +64,18 @@ ensure_env_file() {
       printf 'LOCAL_AUTOLOGIN=true\n' >>"$ENV_FILE"
       ok "Enabled local auto-login (LOCAL_AUTOLOGIN=true in .env.local)"
     fi
+    # Added for a file written before alerts existed. lib/env.ts validates the
+    # WHOLE schema on every route that touches it, so a single missing variable
+    # does not degrade alerts -- it 500s /api/pluggy/connect-token and anything
+    # else that calls loadEnv(), which is how "connect a bank" started failing
+    # on a checkout that had never sent an alert in its life.
+    if ! grep -q '^RESEND_API_KEY=' "$ENV_FILE"; then
+      printf 'RESEND_API_KEY=re_local_dev_alerts_are_not_sent_here\n' >>"$ENV_FILE"
+      ok "Added a local RESEND_API_KEY placeholder (alerts will not send)"
+    fi
+    if ! grep -q '^ALERT_EMAIL_FROM=' "$ENV_FILE"; then
+      printf 'ALERT_EMAIL_FROM=onboarding@resend.dev\n' >>"$ENV_FILE"
+    fi
     return
   fi
 
@@ -80,11 +92,19 @@ PLUGGY_API_URL=https://api.pluggy.ai
 PLUGGY_WEBHOOK_TOKEN=$(openssl rand -base64 32)
 CRON_SECRET=$(openssl rand -base64 32)
 LOCAL_AUTOLOGIN=true
+RESEND_API_KEY=re_local_dev_alerts_are_not_sent_here
+ALERT_EMAIL_FROM=onboarding@resend.dev
 ENVEOF
   chmod 600 "$ENV_FILE"
   ok "Generated .env.local with fresh secrets"
   warn "PLUGGY_CLIENT_ID and PLUGGY_CLIENT_SECRET are placeholders."
   warn "The app runs, but connecting a card fails until you set real values."
+  # A local key that is syntactically a key but belongs to nobody. It has to be
+  # SOMETHING: lib/env.ts rejects .env.example's 'replace-with-your-...' by
+  # name, so copying that value fails the boot as surely as leaving it out.
+  # Alerts then fail at send time and are logged, which is the right outcome
+  # locally -- nobody wants a dev machine mailing a household.
+  warn "RESEND_API_KEY is a local placeholder; budget alerts will not send."
 }
 
 start_db() {

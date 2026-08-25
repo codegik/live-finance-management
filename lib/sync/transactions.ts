@@ -46,7 +46,7 @@ export async function syncConnection(
     const remote = await pluggy.listTransactions(account.pluggyAccountId)
 
     for (const tx of remote) {
-      const row = mapTransaction(tx, account.id)
+      const row = mapTransaction(tx, { id: account.id, type: account.type })
       const [written] = await db
         .insert(transactions)
         .values(row)

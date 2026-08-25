@@ -1,7 +1,8 @@
-import { and, desc, eq, gte, inArray, isNull, lte } from 'drizzle-orm'
+import { and, desc, eq, gte, ilike, inArray, isNull, lte, or } from 'drizzle-orm'
 import type { BudgetRole } from '@/lib/domain/budget-role'
 import { categoryBelongsToHousehold } from './categories'
 import type { Db, Executor } from './client'
+import { escapeLike } from './like'
 import { accounts, categories, connections, transactions } from './schema'
 
 export type TransactionRow = {
@@ -28,7 +29,7 @@ export type TransactionRow = {
 export async function listTransactions(
   db: Db,
   householdId: string,
-  opts: { from?: string; to?: string; includeExcluded?: boolean } = {},
+  opts: { from?: string; to?: string; includeExcluded?: boolean; search?: string | null } = {},
 ): Promise<TransactionRow[]> {
   const filters = [eq(connections.householdId, householdId)]
   if (opts.from) filters.push(gte(transactions.date, opts.from))
@@ -36,6 +37,31 @@ export async function listTransactions(
   // Invoice payments, fees and income are not spending. Callers that want
   // them -- the ledger's "show everything" toggle -- ask explicitly.
   if (!opts.includeExcluded) filters.push(eq(transactions.budgetRole, 'SPEND'))
+
+  // Filtering in SQL rather than over the returned rows is what keeps the
+  // ledger's per-day totals honest: those are summed from whatever this
+  // returns, so a list filtered afterwards would sit under day headers still
+  // totalling the unfiltered day.
+  //
+  // Two columns, because they answer different guesses at the same shop. The
+  // description is what the bank printed, terminal ids and instalment
+  // suffixes included; merchant_normalized is that with the noise stripped
+  // and folded to upper case, so `mercadolivre merca` finds a row whose
+  // description spells it `MERCADOLIVRE*MERCA 02/10`. ilike, not lower() +
+  // like: neither column's casing can be assumed by the caller.
+  const search = opts.search?.trim()
+  if (search) {
+    // escapeLike, not the bare string: see lib/db/like.ts for what a stray
+    // '%' typed into the search box would otherwise match.
+    const pattern = `%${escapeLike(search)}%`
+    const anyColumn = or(
+      ilike(transactions.description, pattern),
+      ilike(transactions.merchantNormalized, pattern),
+    )
+    // or() is only undefined for an empty condition list; the guard is for
+    // the type, not for a case that can happen.
+    if (anyColumn) filters.push(anyColumn)
+  }
 
   const rows = await db
     .select({ transaction: transactions, account: accounts, connection: connections, category: categories })

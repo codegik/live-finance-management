@@ -26,6 +26,23 @@ export type PluggyClient = {
   listTransactions(accountId: string): Promise<PluggyTransaction[]>
 }
 
+/**
+ * A 2xx is not a promise of JSON. A proxy error page, a truncated body or an
+ * empty one all reach response.json() as a bare SyntaxError ("unexpected end
+ * of data") that names neither Pluggy nor the request that failed -- so the
+ * caller cannot tell it apart from a bug in its own code, and no route can map
+ * it to something worth reading. Parsing through here keeps every failure
+ * inside the PLUGGY_* vocabulary the callers already understand.
+ */
+async function parseJson<T>(response: Response, path: string): Promise<T> {
+  const text = await response.text()
+  try {
+    return JSON.parse(text) as T
+  } catch {
+    throw new Error(`PLUGGY_INVALID_RESPONSE:${response.status}:${path}`)
+  }
+}
+
 export function createPluggyClient(config: PluggyConfig): PluggyClient {
   let apiKey: string | undefined
 
@@ -37,7 +54,7 @@ export function createPluggyClient(config: PluggyConfig): PluggyClient {
       body: JSON.stringify({ clientId: config.clientId, clientSecret: config.clientSecret }),
     })
     if (!response.ok) throw new Error('PLUGGY_AUTH_FAILED')
-    const body = (await response.json()) as { apiKey: string }
+    const body = await parseJson<{ apiKey: string }>(response, '/auth')
     apiKey = body.apiKey
     return apiKey
   }
@@ -54,7 +71,7 @@ export function createPluggyClient(config: PluggyConfig): PluggyClient {
       return request<T>(path, init, true)
     }
     if (!response.ok) throw new Error(`PLUGGY_REQUEST_FAILED:${response.status}:${path}`)
-    return (await response.json()) as T
+    return parseJson<T>(response, path)
   }
 
   return {

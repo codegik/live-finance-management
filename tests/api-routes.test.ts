@@ -148,6 +148,45 @@ it('still mints a plain token when no item is named', async () => {
   expect(response.status).toBe(200)
 })
 
+// --- failures answer with a body, not an empty 500 ---------------------------
+//
+// Both of these used to escape the handler as a thrown error, and Next answers
+// a throw in a route handler with a 500 whose body is zero bytes. The button's
+// `await response.json()` then died on "unexpected end of data", so the
+// household saw a JavaScript crash overlay rather than the reason. What makes
+// these tests worth having is the body: the status alone was never the bug.
+
+it('reports unset Pluggy credentials as ENV_INCOMPLETE naming the variables', async () => {
+  await signedIn()
+  // Exactly what ./start.sh writes on a first run, and warns about.
+  vi.stubEnv('PLUGGY_CLIENT_ID', 'replace-with-your-pluggy-client-id')
+  vi.stubEnv('PLUGGY_CLIENT_SECRET', 'replace-with-your-pluggy-client-secret')
+
+  const response = await connectTokenPost(
+    jsonRequest('https://app.test/api/pluggy/connect-token', {}),
+  )
+
+  expect(response.status).toBe(503)
+  expect(await response.json()).toEqual({
+    error: 'ENV_INCOMPLETE',
+    detail: 'PLUGGY_CLIENT_ID, PLUGGY_CLIENT_SECRET',
+  })
+})
+
+it('reports credentials Pluggy rejects as PLUGGY_AUTH_FAILED, not as an empty 500', async () => {
+  await signedIn()
+  // Well-formed and not a placeholder, so loadEnv is satisfied; the mock
+  // Pluggy answers /auth with 403 for any clientId but its own.
+  vi.stubEnv('PLUGGY_CLIENT_ID', 'a-real-looking-but-wrong-client-id')
+
+  const response = await connectTokenPost(
+    jsonRequest('https://app.test/api/pluggy/connect-token', {}),
+  )
+
+  expect(response.status).toBe(503)
+  expect(await response.json()).toEqual({ error: 'PLUGGY_AUTH_FAILED' })
+})
+
 it('creates an invite for the caller household', async () => {
   const { db, householdId } = await signedIn()
 

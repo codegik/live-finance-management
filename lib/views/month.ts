@@ -28,6 +28,14 @@ export type MonthStance = 'PAST' | 'CURRENT' | 'FUTURE'
 /** One transaction behind a category's figure, as the row's detail shows it. */
 export type MonthTransaction = {
   id: string
+  /**
+   * Where this row is filed right now, which is not always where the list it
+   * appears in is filed. The uncategorized and archived buckets are defined by
+   * NOT matching a drawn row, so their lists mix a null with several retired
+   * categories; the inline picker has to say which, per row, or it would
+   * present an unfiled charge as already filed.
+   */
+  categoryId: string | null
   date: string
   /** Signed the same way the row is: bigger means more. */
   amountCents: number
@@ -72,6 +80,20 @@ export type MonthRow = {
   transactionCount: number
 }
 
+/**
+ * The rows behind one of the buckets that no drawn category row can carry.
+ *
+ * The figure itself stays where it always was (`uncategorizedSpentCents` and
+ * friends), read off the aggregate; this only carries the rows it was summed
+ * from, so the bucket can be opened like any category row instead of being a
+ * dead line the household cannot interrogate. Same DETAIL_LIMIT cap and same
+ * true `transactionCount` as MonthRow, for the same reason.
+ */
+export type MonthBucketDetail = {
+  transactions: MonthTransaction[]
+  transactionCount: number
+}
+
 export type MonthGroupView = {
   group: CategoryGroup
   label: string
@@ -106,6 +128,16 @@ export type MonthView = {
   archivedSpentCents: number
   /** INCOME this month that no Receita row accounts for: uncategorized or archived. */
   unassignedIncomeCents: number
+  /**
+   * The rows behind the three figures above that have no category row to sit
+   * on. Each list is built from the exact complement of what the drawn rows
+   * cover, so `sum(transactions) === <the matching *Cents>` whenever the list
+   * is not truncated -- a bucket whose panel disagreed with its own header
+   * would be worse than the dead line it replaced.
+   */
+  uncategorizedDetail: MonthBucketDetail
+  archivedDetail: MonthBucketDetail
+  unassignedIncomeDetail: MonthBucketDetail
   plannedIncomeCents: number
   plannedInvestedCents: number
   plannedExpenseCents: number
@@ -195,6 +227,26 @@ export async function getMonthView(
   // category that somehow holds each would otherwise overwrite the other.
   const byCategoryRole = new Map(totals.map((t) => [`${t.categoryId}:${t.budgetRole}`, t]))
 
+  // One mapper for every list built out of `detail` -- the category rows and
+  // the buckets below. The income sign flip in particular has to happen
+  // exactly once and identically everywhere: a bucket listing -R$ 4.000,00
+  // under a header reading R$ 4.000,00 is how the panel starts contradicting
+  // the figure that opened it.
+  const toMonthTransaction = (row: (typeof detail)[number]): MonthTransaction => ({
+    id: row.id,
+    categoryId: row.categoryId,
+    date: row.date,
+    amountCents:
+      row.budgetRole === 'INCOME' ? toActualCents(row.amountCents, 'RECEITA') : row.amountCents,
+    description: row.description,
+    accountName: row.accountName,
+    last4: row.last4,
+    installment:
+      row.installmentNumber && row.installmentTotal
+        ? `${row.installmentNumber}/${row.installmentTotal}`
+        : null,
+  })
+
   // The detail rows, keyed the same way, so a row's list is drawn from exactly
   // the rows its figure was summed from.
   const detailByCategoryRole = new Map<string, MonthTransaction[]>()
@@ -203,23 +255,51 @@ export async function getMonthView(
     const key = `${row.categoryId}:${row.budgetRole}`
     countByCategoryRole.set(key, (countByCategoryRole.get(key) ?? 0) + 1)
     const list = detailByCategoryRole.get(key) ?? []
-    if (list.length < DETAIL_LIMIT) {
-      list.push({
-        id: row.id,
-        date: row.date,
-        amountCents:
-          row.budgetRole === 'INCOME' ? toActualCents(row.amountCents, 'RECEITA') : row.amountCents,
-        description: row.description,
-        accountName: row.accountName,
-        last4: row.last4,
-        installment:
-          row.installmentNumber && row.installmentTotal
-            ? `${row.installmentNumber}/${row.installmentTotal}`
-            : null,
-      })
-    }
+    if (list.length < DETAIL_LIMIT) list.push(toMonthTransaction(row))
     detailByCategoryRole.set(key, list)
   }
+
+  // Which categories a drawn row can actually account for, split by the role
+  // that row reads. GROUP_BUDGET_ROLE is what decides it: a Receita category
+  // draws its figure from INCOME rows only, so SPEND sitting on one is as
+  // undrawable as spend on a category that was archived last year.
+  const drawnBy = (role: 'SPEND' | 'INCOME') =>
+    new Set(categories.filter((c) => GROUP_BUDGET_ROLE[c.group] === role).map((c) => c.id))
+  const drawnSpendCategories = drawnBy('SPEND')
+  const drawnIncomeCategories = drawnBy('INCOME')
+
+  /**
+   * The rows behind one bucket. `matches` must be the complement of what the
+   * drawn rows cover for that role, because the bucket's FIGURE is a residual
+   * of exactly that subtraction further down -- any row this predicate lets
+   * through that the subtraction did not, or the other way round, and the
+   * panel stops adding up to its own header.
+   */
+  const bucket = (matches: (row: (typeof detail)[number]) => boolean): MonthBucketDetail => {
+    const transactions: MonthTransaction[] = []
+    let transactionCount = 0
+    for (const row of detail) {
+      if (!matches(row)) continue
+      transactionCount += 1
+      if (transactions.length < DETAIL_LIMIT) transactions.push(toMonthTransaction(row))
+    }
+    return { transactions, transactionCount }
+  }
+
+  const uncategorizedDetail = bucket(
+    (row) => row.budgetRole === 'SPEND' && row.categoryId === null,
+  )
+  const archivedDetail = bucket(
+    (row) =>
+      row.budgetRole === 'SPEND' &&
+      row.categoryId !== null &&
+      !drawnSpendCategories.has(row.categoryId),
+  )
+  const unassignedIncomeDetail = bucket(
+    (row) =>
+      row.budgetRole === 'INCOME' &&
+      (row.categoryId === null || !drawnIncomeCategories.has(row.categoryId)),
+  )
   const budgetsByCategory = groupBudgetsByCategory(budgetRows)
 
   const rows: MonthRow[] = categories.map((category) => {
@@ -316,6 +396,9 @@ export async function getMonthView(
     archivedSpentCents:
       totalSpentCents - drawnSpendCents - (uncategorized?.spentCents ?? 0),
     unassignedIncomeCents: totalIncomeCents - actual('RECEITA'),
+    uncategorizedDetail,
+    archivedDetail,
+    unassignedIncomeDetail,
     plannedIncomeCents,
     plannedInvestedCents,
     plannedExpenseCents,

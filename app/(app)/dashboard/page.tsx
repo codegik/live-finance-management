@@ -86,11 +86,25 @@ export default async function MonthPage({
           extra={
             group.group === 'DESPESA_VARIAVEL'
               ? [
-                  { label: 'Não categorizado', amountCents: view.uncategorizedSpentCents },
-                  { label: 'Categorias arquivadas', amountCents: view.archivedSpentCents },
+                  {
+                    label: 'Não categorizado',
+                    amountCents: view.uncategorizedSpentCents,
+                    ...view.uncategorizedDetail,
+                  },
+                  {
+                    label: 'Categorias arquivadas',
+                    amountCents: view.archivedSpentCents,
+                    ...view.archivedDetail,
+                  },
                 ]
               : group.group === 'RECEITA'
-                ? [{ label: 'Receita não categorizada', amountCents: view.unassignedIncomeCents }]
+                ? [
+                    {
+                      label: 'Receita não categorizada',
+                      amountCents: view.unassignedIncomeCents,
+                      ...view.unassignedIncomeDetail,
+                    },
+                  ]
                 : undefined
           }
         />

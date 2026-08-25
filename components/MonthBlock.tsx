@@ -1,7 +1,23 @@
 import { TransactionCategoryPicker } from '@/components/TransactionCategoryPicker'
 import { brl, brlSigned, percent } from '@/lib/format'
 import { MORE_IS_BETTER } from '@/lib/domain/seed-categories'
-import type { MonthGroupView, MonthRow, MonthStance } from '@/lib/views/month'
+import type {
+  MonthBucketDetail,
+  MonthGroupView,
+  MonthRow,
+  MonthStance,
+} from '@/lib/views/month'
+
+/**
+ * A line in a block that is not a category: uncategorized spend, spend on
+ * archived categories, income on no Receita category. It carries its own rows
+ * so it opens like a category row does -- a figure of R$ 73.753,78 that cannot
+ * be interrogated is the one number on the screen nobody can act on.
+ */
+export type MonthExtra = MonthBucketDetail & {
+  label: string
+  amountCents: number
+}
 
 const TITLE_CLASS: Record<string, string> = {
   RECEITA: 'block__title--receita',
@@ -73,18 +89,18 @@ function shortDate(date: string): string {
  * JavaScript and survives a re-render with its own state.
  */
 function RowTransactions({
-  row,
+  transactions,
+  transactionCount,
   categories,
-}: {
-  row: MonthRow
+}: MonthBucketDetail & {
   categories: { id: string; name: string }[]
 }) {
-  const hidden = row.transactionCount - row.transactions.length
+  const hidden = transactionCount - transactions.length
 
   return (
     <>
       <ul className="inbox__rows">
-        {row.transactions.map((transaction) => (
+        {transactions.map((transaction) => (
           <li key={transaction.id} className="inbox__row">
             <span className="inbox__row-date">{shortDate(transaction.date)}</span>
             <span className="inbox__row-desc">{transaction.description}</span>
@@ -98,11 +114,20 @@ function RowTransactions({
             </span>
             {/* Fixing it here, where the mistake is visible. Sending someone
                 to another screen to correct one charge is how a wrong category
-                stays wrong. */}
+                stays wrong.
+
+                Per transaction, not per list. Under a category row the two are
+                the same value by construction, but the "Não categorizado" and
+                "Categorias arquivadas" buckets are defined by NOT matching any
+                drawn row, so their lists have no single category to preselect:
+                null there is the truth, and the picker turns it into a
+                disabled "A categorizar" placeholder. Preselecting whatever
+                sorts first instead would show an unfiled charge as already
+                filed -- and one careless click would then file it there. */}
             <TransactionCategoryPicker
               key={transaction.id}
               transactionId={transaction.id}
-              categoryId={row.categoryId}
+              categoryId={transaction.categoryId}
               categories={categories}
             />
           </li>
@@ -110,7 +135,7 @@ function RowTransactions({
       </ul>
       {hidden > 0 ? (
         <p className="inbox__more">
-          Mostrando {row.transactions.length} de {row.transactionCount} lançamentos.
+          Mostrando {transactions.length} de {transactionCount} lançamentos.
         </p>
       ) : null}
     </>
@@ -235,7 +260,11 @@ function Row({
               {row.plannedFrom ? <span>plano herdado de {row.plannedFrom}</span> : null}
             </span>
         </summary>
-          <RowTransactions row={row} categories={categories} />
+          <RowTransactions
+            transactions={row.transactions}
+            transactionCount={row.transactionCount}
+            categories={categories}
+          />
         </details>
       )}
     </li>
@@ -261,7 +290,7 @@ export function MonthBlock({
   group: MonthGroupView
   stance: MonthStance
   categories: { id: string; name: string }[]
-  extra?: { label: string; amountCents: number }[]
+  extra?: MonthExtra[]
 }) {
   const extras = (extra ?? []).filter((item) => item.amountCents !== 0)
   const total = group.actualCents + extras.reduce((sum, item) => sum + item.amountCents, 0)
@@ -288,9 +317,31 @@ export function MonthBlock({
           <Row key={row.categoryId} row={row} stance={stance} categories={categories} />
         ))}
         {extras.map((item) => (
-          <li key={item.label} className="row">
-            <span className="row__name">{item.label}</span>
-            <span className="row__amounts">{brl(item.amountCents)}</span>
+          <li key={item.label}>
+            {/* Same rule as a category row: nothing behind the figure means
+                nothing to open. A bucket can hold an amount with no rows to
+                show when the money is a residual the detail query cannot
+                name -- an empty panel under it would answer a question nobody
+                asked. No track and no plan: none of these buckets is a
+                category, so there is nothing to budget them against. */}
+            {item.transactionCount === 0 ? (
+              <div className="row">
+                <span className="row__name">{item.label}</span>
+                <span className="row__amounts">{brl(item.amountCents)}</span>
+              </div>
+            ) : (
+              <details className="row-detail">
+                <summary className="row">
+                  <span className="row__name">{item.label}</span>
+                  <span className="row__amounts">{brl(item.amountCents)}</span>
+                </summary>
+                <RowTransactions
+                  transactions={item.transactions}
+                  transactionCount={item.transactionCount}
+                  categories={categories}
+                />
+              </details>
+            )}
           </li>
         ))}
       </ul>

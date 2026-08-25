@@ -485,6 +485,29 @@ input[type='checkbox'], input[type='radio'] {
 
 /* ---------------------------------------------------------------- ledger -- */
 
+/* Overrides the global `form { display: grid }`: these are three controls on
+   one line, not a stack of labelled fields. */
+.ledger__search {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 1rem;
+}
+.ledger__search input {
+  /* Grows into the row but never past a readable measure, and min-width: 0
+     is what lets a flex item actually shrink below its default field size on
+     a narrow screen instead of pushing the button off the edge. */
+  flex: 1 1 18rem;
+  min-width: 0;
+  max-width: 30rem;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.85rem;
+}
+.ledger__search button { padding: 0.4rem 0.75rem; font-size: 0.85rem; }
+
+.ledger__summary { margin: -0.4rem 0 0.9rem; color: var(--text-dim); font-size: 0.82rem; }
+.ledger__summary strong { font-family: var(--font-num); font-weight: 600; color: var(--text); }
+
 .ledger__day { margin: 0 0 1rem; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
 
 .ledger__day-header {
@@ -512,17 +535,21 @@ input[type='checkbox'], input[type='radio'] {
 .ledger__item:hover { background: var(--surface-2); }
 
 .ledger__meta { grid-column: 1; font-size: 0.76rem; color: var(--text-faint); }
-.ledger__amount { grid-row: 1 / span 2; align-self: center; font-family: var(--font-num); font-variant-numeric: tabular-nums; font-size: 0.9rem; }
+/* Three rows now -- description, account line, category picker -- so the
+   amount spans all three to stay centred against the row it belongs to. */
+.ledger__amount { grid-row: 1 / span 3; align-self: center; font-family: var(--font-num); font-variant-numeric: tabular-nums; font-size: 0.9rem; }
 
-.ledger__category {
-  justify-self: start;
-  padding: 0.1rem 0.45rem;
-  border-radius: 999px;
-  background: var(--accent-dim);
-  color: var(--accent);
-  font-size: 0.7rem;
-}
-.ledger__category--none { background: var(--warn-dim); color: var(--warn); }
+/* The read-only category chip became the picker. .txn-cat's own placement
+   (grid-column: 2 / -1) is for the inbox's wider grid; here column 2 is the
+   amount, so the picker has to be pinned back to the first column. */
+.ledger__item .txn-cat { grid-column: 1; grid-row: 3; justify-self: start; margin-top: 0.15rem; }
+/* Always outlined on the ledger, not only on hover: on a screen that is read
+   row by row, an invisible control is one nobody discovers. */
+.ledger__item .txn-cat select { max-width: 14rem; }
+/* :not(--unset) rather than a blanket rule: this selector is more specific
+   than .txn-cat--unset's, so without the exclusion it would repaint an
+   uncategorized row as an ordinary filed one. */
+.ledger__item .txn-cat:not(.txn-cat--unset) select { border-color: var(--border); color: var(--text); }
 
 /* ----------------------------------------------------------------- inbox -- */
 
@@ -587,6 +614,14 @@ input[type='checkbox'], input[type='radio'] {
 .settings__sublist { margin: 0.25rem 0 0; padding-left: 1rem; font-size: 0.8rem; color: var(--text-dim); }
 .settings__confirm { display: grid; gap: 0.4rem; padding: 0.6rem; background: var(--neg-dim); border: 1px solid var(--neg); border-radius: var(--radius-sm); }
 .settings__inline { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: flex-end; margin-top: 0.25rem; }
+
+/* Wraps the connect button so its failure line stays directly beneath it.
+   Both places it renders (.page__header, .settings__row) are flex rows, so
+   without a wrapper the message would become a sibling flex item and land
+   alongside the button rather than under it. max-width keeps the longest
+   line -- the one naming the .env.local variables to set -- from stretching
+   the header. */
+.connect-bank { display: grid; gap: 0.3rem; justify-items: start; max-width: 32rem; }
 
 .form__message { color: var(--pos); font-size: 0.82rem; }
 .form__error { color: var(--neg); font-size: 0.82rem; }
@@ -889,6 +924,12 @@ input[type='checkbox'], input[type='radio'] {
 .inbox__row:hover .txn-cat select,
 .txn-cat select:focus { border-color: var(--border); color: var(--text); }
 .txn-cat select:disabled { opacity: 0.5; }
+
+/* A row sitting in no category, or in an archived one, is unfinished
+   business -- the same amber the "N a categorizar" badge uses, so the two
+   read as the same fact in two places. Amber and not red: nothing is broken,
+   it just has not been filed yet. */
+.txn-cat--unset select { border-color: var(--warn-dim); color: var(--warn); }
 
 .txn-cat__ok { color: var(--pos); font-size: 0.72rem; }
 .txn-cat .form__error { font-size: 0.72rem; }

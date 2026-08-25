@@ -1,5 +1,6 @@
 import { and, eq, inArray, isNull, like, ne, or } from 'drizzle-orm'
 import type { Executor } from '@/lib/db/client'
+import { escapeLike } from '@/lib/db/like'
 import { householdTransactionIds } from '@/lib/db/transactions'
 import { categories, merchantRules, transactions } from '@/lib/db/schema'
 import { normalizeMerchant, resolveCategory } from '@/lib/domain/categorize'
@@ -8,11 +9,6 @@ export type RecategorizeScope =
   | { householdId: string; transactionIds: string[] }
   | { householdId: string; match: { matchType: 'EXACT' | 'CONTAINS'; pattern: string } }
   | { householdId: string }
-
-/** LIKE metacharacters in a user-authored pattern must not act as wildcards. */
-function escapeLike(value: string): string {
-  return value.replace(/[\\%_]/g, (char) => `\\${char}`)
-}
 
 /**
  * The only code that computes a category from merchant, rule and Pluggy
