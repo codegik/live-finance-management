@@ -32,7 +32,7 @@ export function CreateRuleForm({
   connections,
 }: {
   categories: { id: string; name: string }[]
-  connections: { id: string; institution: string }[]
+  connections: { id: string; label: string }[]
 }) {
   const [state, formAction, pending] = useActionState(createRuleAction, INITIAL)
 
@@ -70,7 +70,7 @@ export function CreateRuleForm({
           <option value="">Any bank</option>
           {connections.map((connection) => (
             <option key={connection.id} value={connection.id}>
-              {connection.institution}
+              {connection.label}
             </option>
           ))}
         </select>
