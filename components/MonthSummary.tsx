@@ -7,8 +7,8 @@ import type { MonthView } from '@/lib/views/month'
  * How a headline reads against its plan. Receita and Investido are figures a
  * household wants to REACH, so falling short of the plan is not failure -- it
  * is money still to come. Despesas is a figure to stay UNDER, so passing the
- * plan is the bad direction. Saldo is judged by sign, not by a fraction of a
- * target, because a net that a bar could fill would be a net that was positive.
+ * plan is the bad direction. Saldo is a residual, not a target -- it has no
+ * plan of its own and is judged only by its sign.
  */
 type StatKind = 'more' | 'less' | 'net'
 
@@ -31,20 +31,23 @@ function Stat({
   label,
   kind,
   actualCents,
-  plannedCents,
+  plannedCents = 0,
   remainingLabel,
   extraMeta,
 }: {
   label: string
   kind: StatKind
   actualCents: number
-  plannedCents: number
+  /** Omitted for Saldo, which has no plan. */
+  plannedCents?: number
   /** What the shortfall is called while a "more is better" figure is still short. */
   remainingLabel?: string
   /** e.g. the sheet's "X% da renda" for Investido, kept alongside the plan. */
   extraMeta?: string
 }) {
-  const hasPlan = plannedCents > 0 || (kind === 'net' && plannedCents !== 0)
+  // Saldo is a residual and never carries a plan; the others only have one when
+  // a figure was actually planned.
+  const hasPlan = kind !== 'net' && plannedCents > 0
   const delta = actualCents - plannedCents
 
   // The big figure carries a colour only where a colour means something on its
@@ -55,26 +58,26 @@ function Stat({
   let deltaText: string | null = null
   let deltaTone = 'text-muted-foreground'
 
-  if (kind === 'more') {
+  // With no plan there is nothing to measure against, so no gap chip is drawn.
+  // Direction is carried by colour alone -- green where the figure landed on
+  // its good side, red where it landed on its bad one.
+  if (hasPlan && kind === 'more') {
     barTone = actualCents >= plannedCents ? 'bg-pos' : 'bg-primary'
     if (delta > 0) {
-      deltaText = `${brlSigned(delta)} acima`
+      deltaText = brlSigned(delta)
       deltaTone = 'text-pos'
     } else if (delta < 0) {
       deltaText = `${brl(plannedCents - actualCents)} ${remainingLabel ?? 'restante'}`
     }
-  } else if (kind === 'less') {
+  } else if (hasPlan && kind === 'less') {
     barTone = actualCents > plannedCents ? 'bg-neg' : 'bg-primary'
     if (delta > 0) {
-      deltaText = `${brlSigned(delta)} acima`
+      deltaText = brlSigned(delta)
       deltaTone = 'text-neg'
     } else if (delta < 0) {
       deltaText = `${brl(plannedCents - actualCents)} disponível`
       deltaTone = 'text-pos'
     }
-  } else if (delta !== 0) {
-    deltaText = `${brlSigned(delta)} ${delta > 0 ? 'acima' : 'abaixo'} do plano`
-    deltaTone = delta >= 0 ? 'text-pos' : 'text-neg'
   }
 
   return (
@@ -94,7 +97,7 @@ function Stat({
       {/* A "more/less" figure with a plan draws the plan as the track it fills;
           Saldo and any figure with no plan skip the bar -- a plan of zero has
           no fraction to draw, and a 0% bar would look like real progress. */}
-      {hasPlan && kind !== 'net' ? (
+      {hasPlan ? (
         <span
           className="h-1.5 w-full overflow-hidden rounded-full bg-surface-3"
           aria-hidden="true"
@@ -109,12 +112,11 @@ function Stat({
       <div className="flex flex-col gap-0.5 text-xs">
         {hasPlan ? (
           <span className="text-text-faint">
-            plano {brl(plannedCents)}
-            {kind !== 'net' ? ` · ${percent(actualCents / plannedCents)}` : ''}
+            plano {brl(plannedCents)} · {percent(actualCents / plannedCents)}
           </span>
-        ) : (
+        ) : kind !== 'net' ? (
           <span className="text-text-faint">sem plano</span>
-        )}
+        ) : null}
         {extraMeta ? <span className="text-text-faint">{extraMeta}</span> : null}
         {deltaText ? <span className={cn('font-medium', deltaTone)}>{deltaText}</span> : null}
       </div>
@@ -156,12 +158,7 @@ export function MonthSummary({ view }: { view: MonthView }) {
         actualCents={view.expenseCents}
         plannedCents={view.plannedExpenseCents}
       />
-      <Stat
-        label="Saldo"
-        kind="net"
-        actualCents={view.netCents}
-        plannedCents={view.plannedNetCents}
-      />
+      <Stat label="Saldo" kind="net" actualCents={view.netCents} />
     </div>
   )
 }

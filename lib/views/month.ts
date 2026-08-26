@@ -143,7 +143,6 @@ export type MonthView = {
   plannedExpenseCents: number
   /** Earned minus invested minus spent. Negative means the month ate savings. */
   netCents: number
-  plannedNetCents: number
   /** The sheet's "% da renda": what share of what came in was set aside. */
   investedShareOfIncome: number | null
   uncategorizedSpentCents: number
@@ -411,7 +410,6 @@ export async function getMonthView(
     plannedInvestedCents,
     plannedExpenseCents,
     netCents: incomeCents - investedCents - expenseCents,
-    plannedNetCents: plannedIncomeCents - plannedInvestedCents - plannedExpenseCents,
     // Guarded rather than allowed to divide by zero: a month with no income
     // recorded yet must read as "not known", not as 0% or Infinity.
     investedShareOfIncome: incomeCents > 0 ? investedCents / incomeCents : null,
