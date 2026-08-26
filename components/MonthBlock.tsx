@@ -306,7 +306,7 @@ export function MonthBlock({
 
   return (
     <Card className="overflow-hidden rounded-xl">
-      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-surface-2/40 px-4 py-3">
+      <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-border bg-surface-2/40 px-4 py-3">
         <h2 className="flex items-center gap-2 text-base font-semibold">
           <span
             className={`size-2 rounded-full ${DOT_CLASS[group.group] ?? 'bg-muted-foreground'}`}

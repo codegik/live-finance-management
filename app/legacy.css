@@ -398,10 +398,16 @@ input[type='checkbox'], input[type='radio'] {
 
 .block__rows { list-style: none; margin: 0; padding: 0; }
 
+/* Read left-to-right as one line: the label, then its figure right after it,
+   on a shared baseline. The old layout pinned every amount to the far-right
+   edge, so each row split into a name and a lonely number with a canyon of
+   empty space between them -- a column of figures nobody could tie back to
+   its label at a glance. */
 .row {
   display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 0.15rem 1rem;
+  grid-template-columns: auto 1fr;
+  align-items: baseline;
+  gap: 0.15rem 0.6rem;
   padding: 0.6rem 1rem;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
@@ -409,8 +415,16 @@ input[type='checkbox'], input[type='radio'] {
 .row:last-child { border-bottom: 0; }
 .row:hover { background: var(--surface-2); }
 
-.row__name { font-size: 0.875rem; }
-.row__amounts { grid-column: 2; grid-row: 1; text-align: right; font-family: var(--font-num); font-size: 0.875rem; }
+.row__name { min-width: 0; font-size: 0.875rem; }
+.row__amounts {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: start;
+  text-align: left;
+  font-family: var(--font-num);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
 .row__planned { color: var(--text-faint); }
 
 /* The plan figure is now the control that edits it: a bare button that reads
