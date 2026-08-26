@@ -67,14 +67,16 @@ it('never paints a Receita row as overspent, however far past the plan it is', (
 
 it('colours a year cell over its plan by whether more is better', () => {
   const cell = { period: '2026-08', actualCents: 130_000, plannedCents: 100_000 }
-  expect(cellClass(cell, false)).toBe('grid__over')
-  expect(cellClass(cell, true)).toBe('grid__under')
+  // Over plan when overspending is bad -> red; the same overshoot when more is
+  // better -> green.
+  expect(cellClass(cell, false)).toBe('text-neg')
+  expect(cellClass(cell, true)).toBe('text-pos')
 })
 
 it('leaves an empty year cell unmarked rather than calling it under plan', () => {
   // A month with no spend is not an achievement; painting it green would make
-  // a whole unused row read as a year of wins.
+  // a whole unused row read as a year of wins -- it reads faint instead.
   expect(cellClass({ period: '2026-08', actualCents: 0, plannedCents: 100_000 }, false)).toBe(
-    'grid__zero',
+    'text-text-faint',
   )
 })

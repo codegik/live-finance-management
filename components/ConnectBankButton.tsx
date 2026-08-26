@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { Button } from '@/components/ui/button'
 import {
   ATTACH_FAILED_MESSAGE,
   connectTokenErrorMessage,
@@ -47,7 +48,17 @@ async function readJsonBody(response: Response): Promise<unknown> {
  * None of them may reach the Next.js error overlay: a household that has not
  * finished setting up Pluggy is the ordinary first-run case, not a crash.
  */
-export function ConnectBankButton({ itemId, label }: { itemId?: string; label?: string } = {}) {
+export function ConnectBankButton({
+  itemId,
+  label,
+  variant = 'default',
+  size = 'default',
+}: {
+  itemId?: string
+  label?: string
+  variant?: 'default' | 'outline'
+  size?: 'default' | 'sm'
+} = {}) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -113,12 +124,12 @@ export function ConnectBankButton({ itemId, label }: { itemId?: string; label?: 
   }
 
   return (
-    <div className="connect-bank">
-      <button type="button" onClick={connect} disabled={busy}>
+    <div className="flex flex-col gap-1.5">
+      <Button type="button" variant={variant} size={size} onClick={connect} disabled={busy}>
         {busy ? 'Opening…' : (label ?? 'Connect a bank')}
-      </button>
+      </Button>
       {error ? (
-        <p role="alert" className="form__error">
+        <p role="alert" className="text-sm text-neg">
           {error}
         </p>
       ) : null}

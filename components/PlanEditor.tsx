@@ -1,5 +1,6 @@
 'use client'
 
+import { Plus } from 'lucide-react'
 import { useActionState, useEffect, useRef, useState } from 'react'
 import { setCategoryBudgetAction } from '@/app/(app)/dashboard/actions'
 import type { PlanState } from '@/app/(app)/dashboard/state'
@@ -74,10 +75,17 @@ export function PlanEditor({
             : 'row__planned row__planned--edit'
         }
         onClick={open}
-        aria-label="Editar o plano desta categoria"
-        title="Editar o plano"
+        aria-label={plannedCents === null ? 'Definir um plano para esta categoria' : 'Editar o plano'}
+        title={plannedCents === null ? 'Sem plano — clique para definir' : 'Editar o plano'}
       >
-        {plannedCents === null ? ' · sem plano' : ` / ${brl(plannedCents)}`}
+        {plannedCents === null ? (
+          <Plus
+            className="ml-1 inline-block size-3 align-middle text-text-faint opacity-50 transition-opacity hover:opacity-100"
+            aria-hidden="true"
+          />
+        ) : (
+          ` / ${brl(plannedCents)}`
+        )}
         {state.error ? (
           <span role="alert" className="form__error">
             {' '}

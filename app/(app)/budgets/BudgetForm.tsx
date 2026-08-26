@@ -1,6 +1,9 @@
 'use client'
 
 import { useActionState } from 'react'
+import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
 import {
   CATEGORY_GROUP_LABELS,
   CATEGORY_GROUPS,
@@ -30,21 +33,27 @@ function fieldValue(row: BudgetEditorRow): { defaultValue: string } | { placehol
   return {}
 }
 
-const TITLE_CLASS: Record<CategoryGroup, string> = {
-  RECEITA: 'block__title--receita',
-  INVESTIMENTO: 'block__title--investimento',
-  DESPESA_FIXA: 'block__title--fixa',
-  DESPESA_VARIAVEL: 'block__title--variavel',
+/** A small coloured dot per block, matching the month screen's blocks. */
+const DOT_CLASS: Record<CategoryGroup, string> = {
+  RECEITA: 'bg-pos',
+  INVESTIMENTO: 'bg-accent-blue',
+  DESPESA_FIXA: 'bg-warn',
+  DESPESA_VARIAVEL: 'bg-neg',
   // Never rendered: the planner iterates CATEGORY_GROUPS, which omits TRANSFER.
-  // Present only to satisfy the exhaustive Record.
-  TRANSFER: 'block__title--variavel',
+  TRANSFER: 'bg-muted-foreground',
 }
 
 function PlanRow({ row }: { row: BudgetEditorRow }) {
+  const hint =
+    row.inheritedFrom ??
+    (row.amountCents === null && row.suggestionCents !== null
+      ? `sugerido por ${row.monthsOfHistory} meses de histórico`
+      : null)
+
   return (
-    <li className="plan-row">
-      <label className="plan-row__field">
-        <span className="plan-row__name">{row.categoryName}</span>
+    <li className="flex flex-col gap-1 py-2.5 first:pt-0 last:pb-0">
+      <label className="flex flex-wrap items-center justify-between gap-3">
+        <span className="text-sm font-medium">{row.categoryName}</span>
         {/* An amount this month has ALREADY committed to -- its own explicit
             row -- is a value; anything merely inherited or merely suggested is
             a placeholder. The distinction is the whole of this field.
@@ -61,7 +70,8 @@ function PlanRow({ row }: { row: BudgetEditorRow }) {
             editing ONE category would silently delete every other budget the
             household had set for this month. Clearing stays available --
             emptying a filled field still means clear. */}
-        <input
+        <Input
+          className="w-36 text-right font-mono tabular-nums"
           name={`amount:${row.categoryId}`}
           type="text"
           inputMode="decimal"
@@ -70,12 +80,11 @@ function PlanRow({ row }: { row: BudgetEditorRow }) {
       </label>
       {/* Say where the number came from, so accepting it is an informed act
           rather than a shrug. */}
-      <span className="plan-row__hint">
-        {row.inheritedFrom ? `herdado de ${row.inheritedFrom}` : null}
-        {row.amountCents === null && row.suggestionCents !== null
-          ? `sugerido por ${row.monthsOfHistory} meses de histórico`
-          : null}
-      </span>
+      {hint ? (
+        <span className="text-xs text-text-faint">
+          {row.inheritedFrom ? `herdado de ${row.inheritedFrom}` : hint}
+        </span>
+      ) : null}
     </li>
   )
 }
@@ -84,7 +93,7 @@ export function BudgetForm({ period, rows }: { period: string; rows: BudgetEdito
   const [state, formAction, pending] = useActionState(saveBudgetsAction, INITIAL)
 
   return (
-    <form action={formAction}>
+    <form action={formAction} className="flex flex-col gap-4">
       <input type="hidden" name="period" value={period} />
 
       {/* Blocked the same way the month screen is blocked, and in the same
@@ -96,35 +105,39 @@ export function BudgetForm({ period, rows }: { period: string; rows: BudgetEdito
         if (groupRows.length === 0) return null
 
         return (
-          <section key={group} className="block">
-            <header className="block__header">
-              <h2 className={`block__title ${TITLE_CLASS[group]}`}>
+          <Card key={group} className="overflow-hidden rounded-xl">
+            <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-surface-2/40 px-4 py-3">
+              <h2 className="flex items-center gap-2 text-base font-semibold">
+                <span
+                  className={`size-2 rounded-full ${DOT_CLASS[group]}`}
+                  aria-hidden="true"
+                />
                 {CATEGORY_GROUP_LABELS[group]}
               </h2>
-              <span className="block__planned">
+              <span className="text-xs text-muted-foreground">
                 {group === 'RECEITA' ? 'quanto espera receber' : 'quanto pretende gastar'}
               </span>
             </header>
-            <ul className="block__rows">
+            <ul className="flex flex-col divide-y divide-border px-4 py-2">
               {groupRows.map((row) => (
                 <PlanRow key={row.categoryId} row={row} />
               ))}
             </ul>
-          </section>
+          </Card>
         )
       })}
 
       {state.error ? (
-        <p role="alert" className="form__error">
+        <p role="alert" className="text-sm text-neg">
           {state.error}
         </p>
       ) : null}
-      {state.message ? <p className="form__message">{state.message}</p> : null}
+      {state.message ? <p className="text-sm text-pos">{state.message}</p> : null}
 
-      <div className="plan-save">
-        <button type="submit" disabled={pending}>
+      <div className="sticky bottom-4 flex justify-end">
+        <Button type="submit" disabled={pending} className="shadow-lg">
           {pending ? 'Salvando…' : 'Salvar plano'}
-        </button>
+        </Button>
       </div>
     </form>
   )

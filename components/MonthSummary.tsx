@@ -1,4 +1,6 @@
+import { Card } from '@/components/ui/card'
 import { brl, brlSigned, percent } from '@/lib/format'
+import { cn } from '@/lib/utils'
 import type { MonthView } from '@/lib/views/month'
 
 /**
@@ -47,64 +49,76 @@ function Stat({
 
   // The big figure carries a colour only where a colour means something on its
   // own: Saldo is good or bad by its sign the moment you read it.
-  const valueTone = kind === 'net' ? (actualCents < 0 ? ' stat__value--neg' : ' stat__value--pos') : ''
+  const valueTone = kind === 'net' ? (actualCents < 0 ? 'text-neg' : 'text-pos') : 'text-foreground'
 
-  let barModifier = ''
+  let barTone = 'bg-primary'
   let deltaText: string | null = null
-  let deltaTone = 'stat__delta--dim'
+  let deltaTone = 'text-muted-foreground'
 
   if (kind === 'more') {
-    barModifier = actualCents >= plannedCents ? ' stat__bar--pos' : ''
+    barTone = actualCents >= plannedCents ? 'bg-pos' : 'bg-primary'
     if (delta > 0) {
       deltaText = `${brlSigned(delta)} acima`
-      deltaTone = 'stat__delta--pos'
+      deltaTone = 'text-pos'
     } else if (delta < 0) {
       deltaText = `${brl(plannedCents - actualCents)} ${remainingLabel ?? 'restante'}`
     }
   } else if (kind === 'less') {
-    barModifier = actualCents > plannedCents ? ' stat__bar--over' : ''
+    barTone = actualCents > plannedCents ? 'bg-neg' : 'bg-primary'
     if (delta > 0) {
       deltaText = `${brlSigned(delta)} acima`
-      deltaTone = 'stat__delta--neg'
+      deltaTone = 'text-neg'
     } else if (delta < 0) {
       deltaText = `${brl(plannedCents - actualCents)} disponível`
-      deltaTone = 'stat__delta--pos'
+      deltaTone = 'text-pos'
     }
   } else if (delta !== 0) {
     deltaText = `${brlSigned(delta)} ${delta > 0 ? 'acima' : 'abaixo'} do plano`
-    deltaTone = delta >= 0 ? 'stat__delta--pos' : 'stat__delta--neg'
+    deltaTone = delta >= 0 ? 'text-pos' : 'text-neg'
   }
 
   return (
-    <div className="stat">
-      <span className="stat__label">{label}</span>
-      <span className={`stat__value${valueTone}`}>{brl(actualCents)}</span>
+    <Card className="flex min-w-0 flex-col gap-2 rounded-xl p-4">
+      <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+      </span>
+      <span
+        className={cn(
+          'whitespace-nowrap font-mono text-base font-semibold leading-tight tabular-nums sm:text-lg',
+          valueTone,
+        )}
+      >
+        {brl(actualCents)}
+      </span>
 
       {/* A "more/less" figure with a plan draws the plan as the track it fills;
           Saldo and any figure with no plan skip the bar -- a plan of zero has
           no fraction to draw, and a 0% bar would look like real progress. */}
       {hasPlan && kind !== 'net' ? (
-        <span className="stat__track" aria-hidden="true">
+        <span
+          className="h-1.5 w-full overflow-hidden rounded-full bg-surface-3"
+          aria-hidden="true"
+        >
           <span
-            className={`stat__bar${barModifier}`}
+            className={cn('block h-full rounded-full', barTone)}
             style={{ width: `${widthPercent(actualCents, plannedCents)}%` }}
           />
         </span>
       ) : null}
 
-      <span className="stat__meta">
+      <div className="flex flex-col gap-0.5 text-xs">
         {hasPlan ? (
-          <span className="stat__plan">
+          <span className="text-text-faint">
             plano {brl(plannedCents)}
             {kind !== 'net' ? ` · ${percent(actualCents / plannedCents)}` : ''}
           </span>
         ) : (
-          <span className="stat__plan">sem plano</span>
+          <span className="text-text-faint">sem plano</span>
         )}
-        {extraMeta ? <span className="stat__plan">{extraMeta}</span> : null}
-        {deltaText ? <span className={`stat__delta ${deltaTone}`}>{deltaText}</span> : null}
-      </span>
-    </div>
+        {extraMeta ? <span className="text-text-faint">{extraMeta}</span> : null}
+        {deltaText ? <span className={cn('font-medium', deltaTone)}>{deltaText}</span> : null}
+      </div>
+    </Card>
   )
 }
 
@@ -116,7 +130,7 @@ function Stat({
  */
 export function MonthSummary({ view }: { view: MonthView }) {
   return (
-    <div className="summary">
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       <Stat
         label="Receita"
         kind="more"

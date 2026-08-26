@@ -1,5 +1,6 @@
 import { PlanEditor } from '@/components/PlanEditor'
 import { TransactionCategoryPicker } from '@/components/TransactionCategoryPicker'
+import { Card } from '@/components/ui/card'
 import { brl, brlSigned, percent } from '@/lib/format'
 import { MORE_IS_BETTER } from '@/lib/domain/seed-categories'
 import type {
@@ -20,11 +21,13 @@ export type MonthExtra = MonthBucketDetail & {
   amountCents: number
 }
 
-const TITLE_CLASS: Record<string, string> = {
-  RECEITA: 'block__title--receita',
-  INVESTIMENTO: 'block__title--investimento',
-  DESPESA_FIXA: 'block__title--fixa',
-  DESPESA_VARIAVEL: 'block__title--variavel',
+/** A small coloured dot per block, so the four sheets are told apart at a
+ *  glance -- the same intent as the old coloured titles. */
+const DOT_CLASS: Record<string, string> = {
+  RECEITA: 'bg-pos',
+  INVESTIMENTO: 'bg-accent-blue',
+  DESPESA_FIXA: 'bg-warn',
+  DESPESA_VARIAVEL: 'bg-neg',
 }
 
 export type RowTone = 'plain' | 'good' | 'over' | 'pacing-over'
@@ -100,19 +103,26 @@ function RowTransactions({
 
   return (
     <>
-      <ul className="inbox__rows">
+      <ul className="mt-2 flex flex-col divide-y divide-border rounded-lg border border-border bg-surface-2">
         {transactions.map((transaction) => (
-          <li key={transaction.id} className="inbox__row">
-            <span className="inbox__row-date">{shortDate(transaction.date)}</span>
-            <span className="inbox__row-desc">{transaction.description}</span>
-            <span className="inbox__row-amount">{brl(transaction.amountCents)}</span>
-            <span className="inbox__row-account">
-              {transaction.accountName}
-              {transaction.last4 ? ` ···· ${transaction.last4}` : null}
-              {/* Which instalment of which, because "R$ 1.147,09" repeated
-                  across ten months is otherwise unexplainable. */}
-              {transaction.installment ? ` · parcela ${transaction.installment}` : null}
+          <li
+            key={transaction.id}
+            className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5"
+          >
+            <span className="font-mono text-xs tabular-nums text-muted-foreground">
+              {shortDate(transaction.date)}
             </span>
+            <div className="min-w-0 flex-1 basis-48">
+              <div className="truncate text-sm">{transaction.description}</div>
+              <div className="truncate text-xs text-text-faint">
+                {transaction.accountName}
+                {transaction.last4 ? ` ···· ${transaction.last4}` : null}
+                {/* Which instalment of which, because "R$ 1.147,09" repeated
+                    across ten months is otherwise unexplainable. */}
+                {transaction.installment ? ` · parcela ${transaction.installment}` : null}
+              </div>
+            </div>
+            <span className="font-mono text-xs tabular-nums">{brl(transaction.amountCents)}</span>
             {/* Fixing it here, where the mistake is visible. Sending someone
                 to another screen to correct one charge is how a wrong category
                 stays wrong.
@@ -135,7 +145,7 @@ function RowTransactions({
         ))}
       </ul>
       {hidden > 0 ? (
-        <p className="inbox__more">
+        <p className="mt-2 text-xs text-muted-foreground">
           Mostrando {transactions.length} de {transactionCount} lançamentos.
         </p>
       ) : null}
@@ -295,21 +305,25 @@ export function MonthBlock({
   if (group.rows.length === 0 && extras.length === 0) return null
 
   return (
-    <section className="block">
-      <header className="block__header">
-        <h2 className={`block__title ${TITLE_CLASS[group.group] ?? ''}`}>{group.label}</h2>
-        <span className="block__total">{brl(total)}</span>
-        <span className="block__planned">
+    <Card className="overflow-hidden rounded-xl">
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-surface-2/40 px-4 py-3">
+        <h2 className="flex items-center gap-2 text-base font-semibold">
+          <span
+            className={`size-2 rounded-full ${DOT_CLASS[group.group] ?? 'bg-muted-foreground'}`}
+            aria-hidden="true"
+          />
+          {group.label}
+        </h2>
+        <div className="flex items-baseline gap-2">
+          <span className="font-mono text-sm font-semibold tabular-nums">{brl(total)}</span>
           {group.plannedCents > 0 ? (
-            <>
+            <span className="text-xs text-muted-foreground">
               de {brl(group.plannedCents)} · {percent(total / group.plannedCents)}
-            </>
-          ) : (
-            'sem plano'
-          )}
-        </span>
+            </span>
+          ) : null}
+        </div>
       </header>
-      <ul className="block__rows">
+      <ul className="block__rows px-4 py-2">
         {group.rows.map((row) => (
           <Row
             key={row.categoryId}
@@ -348,6 +362,6 @@ export function MonthBlock({
           </li>
         ))}
       </ul>
-    </section>
+    </Card>
   )
 }

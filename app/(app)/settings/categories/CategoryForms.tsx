@@ -1,6 +1,9 @@
 'use client'
 
 import { useActionState, useState } from 'react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Select } from '@/components/ui/select'
 import {
   CATEGORY_GROUP_LABELS,
   CATEGORY_GROUPS,
@@ -23,11 +26,11 @@ function Feedback({ state }: { state: SettingsState }) {
   return (
     <>
       {state.error ? (
-        <p role="alert" className="form__error">
+        <p role="alert" className="text-sm text-neg">
           {state.error}
         </p>
       ) : null}
-      {state.message ? <p className="form__message">{state.message}</p> : null}
+      {state.message ? <p className="text-sm text-pos">{state.message}</p> : null}
     </>
   )
 }
@@ -36,22 +39,24 @@ function GroupSelect(props: {
   name: string
   value?: CategoryGroup
   defaultValue?: CategoryGroup
+  className?: string
   onChange?: (group: CategoryGroup) => void
 }) {
   return (
-    <select
+    <Select
       name={props.name}
       value={props.value}
       defaultValue={props.defaultValue}
       onChange={props.onChange ? (e) => props.onChange!(e.target.value as CategoryGroup) : undefined}
       aria-label="Bloco"
+      className={props.className}
     >
       {CATEGORY_GROUPS.map((group) => (
         <option key={group} value={group}>
           {CATEGORY_GROUP_LABELS[group]}
         </option>
       ))}
-    </select>
+    </Select>
   )
 }
 
@@ -59,18 +64,23 @@ export function CreateCategoryForm() {
   const [state, formAction, pending] = useActionState(createCategoryAction, INITIAL)
 
   return (
-    <form action={formAction} className="cat-new">
-      <input
-        name="name"
-        type="text"
-        required
-        placeholder="Nova categoria — ex.: Plano de saúde"
-        aria-label="Nova categoria"
-      />
-      <GroupSelect name="group" defaultValue="DESPESA_VARIAVEL" />
-      <button type="submit" disabled={pending}>
-        {pending ? 'Adicionando…' : 'Adicionar'}
-      </button>
+    <form action={formAction} className="flex flex-col gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row">
+        <Input
+          className="sm:flex-1"
+          name="name"
+          type="text"
+          required
+          placeholder="Nova categoria — ex.: Plano de saúde"
+          aria-label="Nova categoria"
+        />
+        <div className="sm:w-52">
+          <GroupSelect name="group" defaultValue="DESPESA_VARIAVEL" />
+        </div>
+        <Button type="submit" disabled={pending}>
+          {pending ? 'Adicionando…' : 'Adicionar'}
+        </Button>
+      </div>
       <Feedback state={state} />
     </form>
   )
@@ -97,59 +107,67 @@ export function CategoryRow({
     // archive button overrides the form's action for that submit, so the row
     // stays a single set of fields with a single set of controls instead of
     // the three stacked forms this screen first shipped with.
-    <li className="cat-row">
-      <form action={saveFormAction} className="cat-row__form">
+    <li className="py-2.5 first:pt-0 last:pb-0">
+      <form action={saveFormAction} className="flex flex-col gap-2">
         <input type="hidden" name="categoryId" value={category.id} />
 
-        <input
-          className="cat-row__name"
-          name="name"
-          type="text"
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          aria-label="Nome da categoria"
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          <Input
+            className="min-w-40 flex-1"
+            name="name"
+            type="text"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            aria-label="Nome da categoria"
+          />
 
-        <GroupSelect name="group" value={group} onChange={setGroup} />
+          <div className="w-44">
+            <GroupSelect name="group" value={group} onChange={setGroup} />
+          </div>
 
-        <div className="cat-row__actions">
-          {dirty ? (
-            <button type="submit" disabled={saving}>
-              {saving ? 'Salvando…' : 'Salvar'}
-            </button>
-          ) : null}
+          <div className="flex items-center gap-2">
+            {dirty ? (
+              <Button type="submit" size="sm" disabled={saving}>
+                {saving ? 'Salvando…' : 'Salvar'}
+              </Button>
+            ) : null}
 
-          {/* Two steps, because archiving takes a category off every picker
-              and out of every block. It is reversible in the data -- the row
-              is only stamped, never deleted -- but a household that loses a
-              category by mis-clicking has no way to know that. */}
-          {confirmingArchive ? (
-            <>
-              <button
-                type="submit"
-                className="btn-danger"
-                formAction={archiveFormAction}
-                disabled={archiving}
-              >
-                {archiving ? 'Arquivando…' : 'Confirmar'}
-              </button>
-              <button
+            {/* Two steps, because archiving takes a category off every picker
+                and out of every block. It is reversible in the data -- the row
+                is only stamped, never deleted -- but a household that loses a
+                category by mis-clicking has no way to know that. */}
+            {confirmingArchive ? (
+              <>
+                <Button
+                  type="submit"
+                  size="sm"
+                  variant="destructive"
+                  formAction={archiveFormAction}
+                  disabled={archiving}
+                >
+                  {archiving ? 'Arquivando…' : 'Confirmar'}
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setConfirmingArchive(false)}
+                >
+                  Cancelar
+                </Button>
+              </>
+            ) : (
+              <Button
                 type="button"
-                className="btn-quiet"
-                onClick={() => setConfirmingArchive(false)}
+                size="sm"
+                variant="ghost"
+                className="text-muted-foreground"
+                onClick={() => setConfirmingArchive(true)}
               >
-                Cancelar
-              </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              className="btn-quiet cat-row__archive"
-              onClick={() => setConfirmingArchive(true)}
-            >
-              Arquivar
-            </button>
-          )}
+                Arquivar
+              </Button>
+            )}
+          </div>
         </div>
 
         <Feedback state={saveState} />

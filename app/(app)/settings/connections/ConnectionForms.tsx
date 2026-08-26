@@ -1,6 +1,9 @@
 'use client'
 
 import { useActionState } from 'react'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { removeConnectionAction, saveAccountDaysAction } from './actions'
 import type { ConnectionState } from './state'
 
@@ -23,21 +26,58 @@ export function RemoveConnectionForm({
   const [state, formAction, pending] = useActionState(removeConnectionAction, INITIAL)
 
   return (
-    <form action={formAction} className="settings__confirm">
+    <form
+      action={formAction}
+      className="flex flex-col gap-3 rounded-md border border-destructive/40 bg-destructive/5 p-4"
+    >
       <input type="hidden" name="connectionId" value={connectionId} />
-      <p>
-        Remove <strong>{institution}</strong> and delete {transactionCount} transactions? This
-        cannot be undone.
+      <p className="text-sm text-foreground">
+        Remove <strong className="font-semibold">{institution}</strong> and delete{' '}
+        {transactionCount} transactions? This cannot be undone.
       </p>
       {state.error ? (
-        <p role="alert" className="form__error">
+        <p role="alert" className="text-sm text-neg">
           {state.error}
         </p>
       ) : null}
-      <button type="submit" disabled={pending}>
+      <Button type="submit" variant="destructive" size="sm" disabled={pending} className="self-start">
         {pending ? 'Removing…' : `Yes, delete ${transactionCount} transactions`}
-      </button>
+      </Button>
     </form>
+  )
+}
+
+/** A number field with its caption and an optional "override" tag. The caption
+ *  row is a fixed height so the tag appearing or not never nudges the input
+ *  below it out of line with its neighbour. */
+function DayField({
+  name,
+  caption,
+  overridden,
+  defaultValue,
+  placeholder,
+}: {
+  name: string
+  caption: string
+  overridden: boolean
+  defaultValue: number | null
+  placeholder: string | undefined
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex h-5 items-center gap-2">
+        <span className="text-xs font-medium text-muted-foreground">{caption}</span>
+        {overridden ? <Badge variant="warn">override</Badge> : null}
+      </div>
+      <Input
+        name={name}
+        type="number"
+        min={1}
+        max={31}
+        defaultValue={defaultValue ?? ''}
+        placeholder={placeholder}
+      />
+    </div>
   )
 }
 
@@ -69,42 +109,36 @@ export function AccountDaysForm({
   const [state, formAction, pending] = useActionState(saveAccountDaysAction, INITIAL)
 
   return (
-    <form action={formAction} className="settings__inline">
+    <form action={formAction} className="mt-3 flex flex-col gap-3">
       <input type="hidden" name="accountId" value={accountId} />
-      <label>
-        Due day {dueDayOverridden ? <span className="badge">override</span> : null}
-        <input
+      <div className="grid max-w-xs grid-cols-2 gap-4">
+        <DayField
           name="dueDay"
-          type="number"
-          min={1}
-          max={31}
-          defaultValue={dueDayOverride ?? ''}
+          caption="Due day"
+          overridden={dueDayOverridden}
+          defaultValue={dueDayOverride}
           placeholder={pluggyDueDay != null ? String(pluggyDueDay) : undefined}
         />
-      </label>
-      <label>
-        Closing day {closingDayOverridden ? <span className="badge">override</span> : null}
-        <input
+        <DayField
           name="closingDay"
-          type="number"
-          min={1}
-          max={31}
-          defaultValue={closingDayOverride ?? ''}
+          caption="Closing day"
+          overridden={closingDayOverridden}
+          defaultValue={closingDayOverride}
           placeholder={pluggyClosingDay != null ? String(pluggyClosingDay) : undefined}
         />
-      </label>
-      <p className="settings__meta">
+      </div>
+      <p className="text-xs text-muted-foreground">
         pluggy reports due day {pluggyDueDay ?? 'none'}, closing day {pluggyClosingDay ?? 'none'}
       </p>
       {state.error ? (
-        <p role="alert" className="form__error">
+        <p role="alert" className="text-sm text-neg">
           {state.error}
         </p>
       ) : null}
-      {state.message ? <p className="form__message">{state.message}</p> : null}
-      <button type="submit" disabled={pending}>
+      {state.message ? <p className="text-sm text-pos">{state.message}</p> : null}
+      <Button type="submit" size="sm" disabled={pending} className="self-start">
         {pending ? 'Saving…' : 'Save'}
-      </button>
+      </Button>
     </form>
   )
 }

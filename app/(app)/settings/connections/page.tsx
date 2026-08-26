@@ -1,13 +1,43 @@
+import { CreditCard, Landmark, Trash2, Wallet } from 'lucide-react'
 import Link from 'next/link'
 import { ConnectBankButton } from '@/components/ConnectBankButton'
+import { Badge } from '@/components/ui/badge'
+import { buttonVariants } from '@/components/ui/button'
+import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { requireSession, toSignInOrThrow } from '@/lib/auth/session'
 import { getDb } from '@/lib/db/client'
-import { countConnectionTransactions, listConnectionDetails } from '@/lib/db/connections'
+import {
+  type ConnectionDetail,
+  countConnectionTransactions,
+  listConnectionDetails,
+} from '@/lib/db/connections'
 import { HOUSEHOLD_TIME_ZONE } from '@/lib/domain/dates'
 import { AccountDaysForm, RemoveConnectionForm } from './ConnectionForms'
 import { idSchema } from './state'
 
 export const dynamic = 'force-dynamic'
+
+/** A coloured dot + label for the connection's sync health. The colours are
+ *  the app's meaning-carrying ones: green = current, amber = going stale,
+ *  red = broken and needs the household to act. */
+function StatusPill({ status }: { status: ConnectionDetail['status'] }) {
+  const tone: Record<ConnectionDetail['status'], { dot: string; text: string }> = {
+    UPDATED: { dot: 'bg-pos', text: 'text-pos' },
+    UPDATING: { dot: 'bg-accent-blue', text: 'text-muted-foreground' },
+    OUTDATED: { dot: 'bg-warn', text: 'text-warn' },
+    LOGIN_ERROR: { dot: 'bg-neg', text: 'text-neg' },
+    WAITING_USER_INPUT: { dot: 'bg-neg', text: 'text-neg' },
+  }
+  const t = tone[status]
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 text-xs font-medium ${t.text}`}
+    >
+      <span className={`size-1.5 rounded-full ${t.dot}`} />
+      {status.toLowerCase().replaceAll('_', ' ')}
+    </span>
+  )
+}
 
 // Formatted in the household's zone, not UTC -- this line exists to tell the
 // user how current their data is, and a UTC clock would be quietly wrong by
@@ -47,36 +77,106 @@ export default async function ConnectionsSettingsPage({
     : null
 
   return (
-    <main className="page page--narrow">
-      <header className="page__header">
-        <h1>Connections</h1>
+    <main className="mx-auto flex w-full max-w-2xl flex-col gap-8 p-6 sm:p-8">
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-semibold tracking-tight">Connections</h1>
+          <p className="text-sm text-muted-foreground">
+            Banks and cards linked to your household, and how fresh their data is.
+          </p>
+        </div>
         <ConnectBankButton />
       </header>
 
       {details.length === 0 ? (
-        <p className="empty">No banks connected yet.</p>
+        <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border-strong p-12 text-center">
+          <div className="flex size-12 items-center justify-center rounded-full bg-surface-2 text-muted-foreground">
+            <Landmark className="size-6" />
+          </div>
+          <p className="text-sm text-muted-foreground">No banks connected yet.</p>
+          <ConnectBankButton />
+        </div>
       ) : (
-        <ul className="settings__list">
+        <div className="flex flex-col gap-4">
           {details.map((connection) => (
-            <li key={connection.id} className="settings__row settings__row--stacked">
-              <div>
-                <strong>{connection.institution}</strong> · {connection.ownerName}
-                <p className="settings__meta">
-                  {connection.status.toLowerCase().replaceAll('_', ' ')} ·{' '}
-                  {syncedLabel(connection.lastSyncedAt)}
-                </p>
+            <Card
+              key={connection.id}
+              className="overflow-hidden rounded-xl transition-colors hover:border-border-strong"
+            >
+              <CardHeader className="gap-4 border-b border-border bg-surface-2/40">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="flex size-11 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-accent-blue/25 to-pos/20 text-foreground">
+                      <Landmark className="size-5" />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-base font-semibold leading-none">
+                          {connection.institution}
+                        </span>
+                        <span className="text-sm text-muted-foreground">
+                          · {connection.ownerName}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <StatusPill status={connection.status} />
+                        <span className="text-xs text-text-faint">
+                          · {syncedLabel(connection.lastSyncedAt)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <ConnectBankButton
+                    itemId={connection.pluggyItemId}
+                    label="Reconnect"
+                    variant="outline"
+                    size="sm"
+                  />
+                </div>
                 {connection.stale ? (
-                  <p role="alert" className="form__error">
+                  <p
+                    role="alert"
+                    className="rounded-md border border-neg/40 bg-neg-dim/60 px-3 py-2 text-sm text-neg"
+                  >
                     {connection.stale === 'NEEDS_REAUTH'
                       ? 'This bank needs reconnecting before its figures can be trusted.'
                       : 'This bank has not updated recently.'}
                   </p>
                 ) : null}
-                <ul className="settings__sublist">
+              </CardHeader>
+
+              <CardContent className="flex flex-col gap-3 pt-5">
+                <ul className="flex flex-col gap-3">
                   {connection.accounts.map((account) => (
-                    <li key={account.id}>
-                      {account.name} {account.last4 ? `••${account.last4}` : null} ·{' '}
-                      {account.type === 'CREDIT' ? 'card' : 'checking'}
+                    <li
+                      key={account.id}
+                      className="flex flex-col gap-3 rounded-lg border border-border bg-surface-2 p-3.5"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-surface-3 text-muted-foreground">
+                          {account.type === 'CREDIT' ? (
+                            <CreditCard className="size-4" />
+                          ) : (
+                            <Wallet className="size-4" />
+                          )}
+                        </div>
+                        <div className="flex min-w-0 flex-col">
+                          <span className="truncate text-sm font-medium">{account.name}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {account.last4 ? (
+                              <span className="font-mono">••{account.last4}</span>
+                            ) : null}
+                            {account.last4 ? ' · ' : null}
+                            {account.type === 'CREDIT' ? 'credit card' : 'checking'}
+                          </span>
+                        </div>
+                        <Badge
+                          variant={account.type === 'CREDIT' ? 'secondary' : 'outline'}
+                          className="ml-auto"
+                        >
+                          {account.type === 'CREDIT' ? 'card' : 'checking'}
+                        </Badge>
+                      </div>
                       {account.type === 'CREDIT' ? (
                         <AccountDaysForm
                           accountId={account.id}
@@ -91,20 +191,30 @@ export default async function ConnectionsSettingsPage({
                     </li>
                   ))}
                 </ul>
-              </div>
-              <ConnectBankButton itemId={connection.pluggyItemId} label="Reconnect" />
-              {removing?.id === connection.id ? (
-                <RemoveConnectionForm
-                  connectionId={connection.id}
-                  institution={connection.institution}
-                  transactionCount={removing.count}
-                />
-              ) : (
-                <Link href={`/settings/connections?remove=${connection.id}`}>Remove</Link>
-              )}
-            </li>
+
+                {removing?.id === connection.id ? (
+                  <RemoveConnectionForm
+                    connectionId={connection.id}
+                    institution={connection.institution}
+                    transactionCount={removing.count}
+                  />
+                ) : (
+                  <Link
+                    href={`/settings/connections?remove=${connection.id}`}
+                    className={buttonVariants({
+                      variant: 'ghost',
+                      size: 'sm',
+                      className: 'mt-1 self-start text-neg hover:bg-neg-dim/40 hover:text-neg',
+                    })}
+                  >
+                    <Trash2 className="size-4" />
+                    Remove
+                  </Link>
+                )}
+              </CardContent>
+            </Card>
           ))}
-        </ul>
+        </div>
       )}
     </main>
   )

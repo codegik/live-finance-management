@@ -3,6 +3,8 @@ import { MonthBlock } from '@/components/MonthBlock'
 import { MonthNav } from '@/components/MonthNav'
 import { MonthSummary } from '@/components/MonthSummary'
 import { StaleBanner } from '@/components/StaleBanner'
+import { Badge } from '@/components/ui/badge'
+import { buttonVariants } from '@/components/ui/button'
 import { requireSession, toSignInOrThrow } from '@/lib/auth/session'
 import { listCategories } from '@/lib/db/categories'
 import { getDb } from '@/lib/db/client'
@@ -46,19 +48,26 @@ export default async function MonthPage({
   ])
 
   return (
-    <main className="page">
-      <header className="page__header">
-        <div className="page__title">
-          <h1>{monthLabel(view.period)}</h1>
-          <span className="page__sub">{stanceLabel(view)}</span>
+    <main className="mx-auto flex w-full max-w-3xl flex-col gap-6 p-6 sm:p-8">
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-semibold capitalize tracking-tight">
+            {monthLabel(view.period)}
+          </h1>
+          <p className="text-sm text-muted-foreground">{stanceLabel(view)}</p>
         </div>
-        <div className="page__actions">
+        <div className="flex items-center gap-2">
           {view.uncategorizedCount > 0 ? (
-            <Link href="/inbox" className="badge">
-              {view.uncategorizedCount} a categorizar · {brl(view.uncategorizedSpentCents)}
+            <Link href="/inbox">
+              <Badge variant="warn">
+                {view.uncategorizedCount} a categorizar · {brl(view.uncategorizedSpentCents)}
+              </Badge>
             </Link>
           ) : null}
-          <Link href={`/budgets?period=${view.period}`} className="btn-quiet">
+          <Link
+            href={`/budgets?period=${view.period}`}
+            className={buttonVariants({ variant: 'outline', size: 'sm' })}
+          >
             Planejar este mês
           </Link>
         </div>

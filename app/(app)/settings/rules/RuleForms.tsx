@@ -1,6 +1,10 @@
 'use client'
 
 import { useActionState } from 'react'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Select } from '@/components/ui/select'
 import type { SettingsState } from '../categories/state'
 import { createRuleAction, deleteRuleAction } from './actions'
 
@@ -18,11 +22,11 @@ function Feedback({ state }: { state: SettingsState }) {
   return (
     <>
       {state.error ? (
-        <p role="alert" className="form__error">
+        <p role="alert" className="text-sm text-neg">
           {state.error}
         </p>
       ) : null}
-      {state.message ? <p className="form__message">{state.message}</p> : null}
+      {state.message ? <p className="text-sm text-pos">{state.message}</p> : null}
     </>
   )
 }
@@ -37,48 +41,52 @@ export function CreateRuleForm({
   const [state, formAction, pending] = useActionState(createRuleAction, INITIAL)
 
   return (
-    <form action={formAction}>
-      <label>
-        Match
-        <select name="matchType" defaultValue="CONTAINS">
-          <option value="CONTAINS">anything containing</option>
-          <option value="EXACT">exactly</option>
-        </select>
-      </label>
-      <label>
-        Pattern
-        <input name="pattern" type="text" required />
-      </label>
-      <label>
-        Category
-        <select name="categoryId" required defaultValue="">
-          <option value="" disabled>
-            Choose…
-          </option>
-          {categories.map((category) => (
-            <option key={category.id} value={category.id}>
-              {category.name}
+    <form action={formAction} className="flex flex-col gap-4">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Label>
+          Match
+          <Select name="matchType" defaultValue="CONTAINS">
+            <option value="CONTAINS">anything containing</option>
+            <option value="EXACT">exactly</option>
+          </Select>
+        </Label>
+        <Label>
+          Pattern
+          <Input name="pattern" type="text" required placeholder="e.g. ZAFFARI" />
+        </Label>
+        <Label>
+          Category
+          <Select name="categoryId" required defaultValue="">
+            <option value="" disabled>
+              Choose…
             </option>
-          ))}
-        </select>
-      </label>
-      {/* Optional. The same descriptor can appear at more than one bank, so a
-          rule can be pinned to one; the empty default matches every bank. */}
-      <label>
-        Bank
-        <select name="connectionId" defaultValue="">
-          <option value="">Any bank</option>
-          {connections.map((connection) => (
-            <option key={connection.id} value={connection.id}>
-              {connection.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      <Feedback state={state} />
-      <button type="submit" disabled={pending}>
-        {pending ? 'Adding…' : 'Add rule'}
-      </button>
+            {categories.map((category) => (
+              <option key={category.id} value={category.id}>
+                {category.name}
+              </option>
+            ))}
+          </Select>
+        </Label>
+        {/* Optional. The same descriptor can appear at more than one bank, so a
+            rule can be pinned to one; the empty default matches every bank. */}
+        <Label>
+          Bank <span className="font-normal text-text-faint">(optional)</span>
+          <Select name="connectionId" defaultValue="">
+            <option value="">Any bank</option>
+            {connections.map((connection) => (
+              <option key={connection.id} value={connection.id}>
+                {connection.label}
+              </option>
+            ))}
+          </Select>
+        </Label>
+      </div>
+      <div className="flex items-center gap-3">
+        <Button type="submit" disabled={pending}>
+          {pending ? 'Adding…' : 'Add rule'}
+        </Button>
+        <Feedback state={state} />
+      </div>
     </form>
   )
 }
@@ -87,12 +95,12 @@ export function DeleteRuleForm({ ruleId }: { ruleId: string }) {
   const [state, formAction, pending] = useActionState(deleteRuleAction, INITIAL)
 
   return (
-    <form action={formAction}>
+    <form action={formAction} className="flex items-center gap-2">
       <input type="hidden" name="ruleId" value={ruleId} />
       <Feedback state={state} />
-      <button type="submit" disabled={pending}>
+      <Button type="submit" variant="ghost" size="sm" disabled={pending} className="text-neg hover:bg-neg-dim/40 hover:text-neg">
         {pending ? 'Deleting…' : 'Delete'}
-      </button>
+      </Button>
     </form>
   )
 }

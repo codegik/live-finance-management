@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { MonthNav } from '@/components/MonthNav'
+import { buttonVariants } from '@/components/ui/button'
 import { requireSession, toSignInOrThrow } from '@/lib/auth/session'
 import { getDb } from '@/lib/db/client'
 import { saoPauloPeriod } from '@/lib/domain/dates'
@@ -27,15 +28,20 @@ export default async function BudgetsPage({
   const view = await getBudgetEditorView(getDb(), session.householdId, period)
 
   return (
-    <main className="page">
-      <header className="page__header">
-        <div className="page__title">
-          <h1>Plano · {monthLabel(view.period)}</h1>
-          <span className="page__sub">
+    <main className="mx-auto flex w-full max-w-2xl flex-col gap-6 p-6 sm:p-8">
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-semibold capitalize tracking-tight">
+            Plano · {monthLabel(view.period)}
+          </h1>
+          <p className="text-sm text-muted-foreground">
             Um valor em branco herda o mês anterior. Salvar grava só o que você preencheu.
-          </span>
+          </p>
         </div>
-        <Link href={`/dashboard?period=${view.period}`} className="btn-quiet">
+        <Link
+          href={`/dashboard?period=${view.period}`}
+          className={buttonVariants({ variant: 'outline', size: 'sm' })}
+        >
           Ver o mês
         </Link>
       </header>
