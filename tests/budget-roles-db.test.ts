@@ -35,7 +35,7 @@ async function seedHousehold() {
     })
     .returning({ id: connections.id })
   const accountId = await seedAccount(db, connection.id)
-  return { db, householdId, accountId }
+  return { db, householdId, accountId, connectionId: connection.id }
 }
 
 async function roleOf(db: ReturnType<typeof testDb>, householdId: string, id: string) {
@@ -117,6 +117,85 @@ it('re-roles a hand-categorized row too, which recategorize could never do', asy
   await refreshBudgetRoles(db, householdId)
 
   expect(await roleOf(db, householdId, id)).toBe('TRANSFER')
+})
+
+it('forces BOTH legs of an own-account transfer to TRANSFER', async () => {
+  const { db, householdId, connectionId } = await seedHousehold()
+  const bankA = await seedAccount(db, connectionId, { type: 'BANK', name: 'Nubank' })
+  const bankB = await seedAccount(db, connectionId, { type: 'BANK', name: 'Poupança' })
+  // The prod transaction: R$9.425,00 out of one account, into another the same
+  // day. Left alone, the debit is SPEND and the credit INCOME -- the same money
+  // inflating Despesas and Receita at once.
+  const out = await insertTransaction(db, bankA, {
+    description: 'Transferência enviada',
+    amountCents: 942_500,
+    date: '2026-08-06',
+  })
+  const inc = await insertTransaction(db, bankB, {
+    description: 'Transferência recebida',
+    amountCents: -942_500,
+    date: '2026-08-06',
+  })
+
+  await refreshBudgetRoles(db, householdId)
+
+  expect(await roleOf(db, householdId, out)).toBe('TRANSFER')
+  expect(await roleOf(db, householdId, inc)).toBe('TRANSFER')
+})
+
+it('pairs an own-account transfer even when the debit carries an AUTO category', async () => {
+  const { db, householdId, connectionId } = await seedHousehold()
+  const bankA = await seedAccount(db, connectionId, { type: 'BANK', name: 'Nubank' })
+  const bankB = await seedAccount(db, connectionId, { type: 'BANK', name: 'Poupança' })
+  const out = await insertTransaction(db, bankA, {
+    description: 'Transferência enviada',
+    amountCents: 942_500,
+    date: '2026-08-06',
+  })
+  const inc = await insertTransaction(db, bankB, {
+    description: 'Transferência recebida',
+    amountCents: -942_500,
+    date: '2026-08-06',
+  })
+  // A merchant rule filed the debit under 'Casa' (the prod case). categorySource
+  // RULE -- not MANUAL -- so the fact-based pairing still wins.
+  await db
+    .update(transactions)
+    .set({ categorySource: 'RULE' })
+    .where(eq(transactions.id, out))
+
+  await refreshBudgetRoles(db, householdId)
+
+  expect(await roleOf(db, householdId, out)).toBe('TRANSFER')
+  expect(await roleOf(db, householdId, inc)).toBe('TRANSFER')
+})
+
+it('leaves an own-transfer leg the household MANUALLY filed as a real expense', async () => {
+  const { db, householdId, connectionId } = await seedHousehold()
+  const bankA = await seedAccount(db, connectionId, { type: 'BANK', name: 'Nubank' })
+  const bankB = await seedAccount(db, connectionId, { type: 'BANK', name: 'Poupança' })
+  const out = await insertTransaction(db, bankA, {
+    description: 'Transferência enviada',
+    amountCents: 942_500,
+    date: '2026-08-06',
+  })
+  const inc = await insertTransaction(db, bankB, {
+    description: 'Transferência recebida',
+    amountCents: -942_500,
+    date: '2026-08-06',
+  })
+  // The household insists the debit is a real expense. A MANUAL filing wins over
+  // the pairing, so the debit stays SPEND -- and its now-unpaired credit stays
+  // INCOME, both visible.
+  await db
+    .update(transactions)
+    .set({ categorySource: 'MANUAL' })
+    .where(eq(transactions.id, out))
+
+  await refreshBudgetRoles(db, householdId)
+
+  expect(await roleOf(db, householdId, out)).toBe('SPEND')
+  expect(await roleOf(db, householdId, inc)).toBe('INCOME')
 })
 
 it('leaves another household alone', async () => {

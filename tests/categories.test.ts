@@ -4,6 +4,7 @@ import {
   archiveCategory,
   createCategory,
   listCategories,
+  SystemCategoryError,
   updateCategory,
 } from '@/lib/db/categories'
 import { createHousehold } from '@/lib/db/households'
@@ -67,6 +68,24 @@ it('hides an archived category from the default listing but still returns it on 
 
   const all = await listCategories(db, householdId, { includeArchived: true })
   expect(all.map((c) => c.id)).toContain(supermarket.id)
+})
+
+it('refuses to rename or archive a system category, and leaves it intact', async () => {
+  const { db, householdId } = await seedHousehold()
+  const all = await listCategories(db, householdId)
+  const transfer = all.find((c) => c.seedKey === 'account-transfer')!
+
+  await expect(
+    updateCategory(db, householdId, transfer.id, { name: 'Meu', group: 'DESPESA_VARIAVEL' }),
+  ).rejects.toBeInstanceOf(SystemCategoryError)
+  await expect(archiveCategory(db, householdId, transfer.id)).rejects.toBeInstanceOf(
+    SystemCategoryError,
+  )
+
+  const after = (await listCategories(db, householdId)).find((c) => c.seedKey === 'account-transfer')!
+  expect(after.name).toBe('Transferência entre contas')
+  expect(after.group).toBe('TRANSFER')
+  expect(after.archivedAt).toBeNull()
 })
 
 it('scopes every category operation to its household', async () => {

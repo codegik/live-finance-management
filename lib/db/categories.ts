@@ -1,7 +1,40 @@
 import { and, asc, eq, isNull } from 'drizzle-orm'
-import { type CategoryGroup, SEED_CATEGORIES } from '@/lib/domain/seed-categories'
+import {
+  type CategoryGroup,
+  SEED_CATEGORIES,
+  SYSTEM_CATEGORY_SEED_KEYS,
+} from '@/lib/domain/seed-categories'
 import type { Executor } from './client'
 import { categories, type Category } from './schema'
+
+/**
+ * Thrown when an edit or archive targets a SYSTEM category
+ * (SYSTEM_CATEGORY_SEED_KEYS). Named so the settings action can turn it into a
+ * message the household can read rather than letting it surface as a 500.
+ */
+export class SystemCategoryError extends Error {
+  constructor() {
+    super('SYSTEM_CATEGORY')
+    this.name = 'SystemCategoryError'
+  }
+}
+
+/**
+ * Whether this category is one the app addresses by seedKey. Reads the row so
+ * the check is on the stored identity, not on anything the caller passed.
+ */
+async function isSystemCategory(
+  exec: Executor,
+  householdId: string,
+  categoryId: string,
+): Promise<boolean> {
+  const [row] = await exec
+    .select({ seedKey: categories.seedKey })
+    .from(categories)
+    .where(and(eq(categories.id, categoryId), eq(categories.householdId, householdId)))
+    .limit(1)
+  return row?.seedKey != null && SYSTEM_CATEGORY_SEED_KEYS.has(row.seedKey)
+}
 
 /**
  * Idempotent: onConflictDoNothing against the (household_id, seed_key)
@@ -71,6 +104,10 @@ export async function updateCategory(
   categoryId: string,
   fields: { name: string; group: CategoryGroup },
 ): Promise<void> {
+  // A SYSTEM category's name and group are addressed by the classification
+  // code; renaming or moving it would break that code silently.
+  if (await isSystemCategory(exec, householdId, categoryId)) throw new SystemCategoryError()
+
   await exec
     .update(categories)
     .set({ name: fields.name.trim(), group: fields.group })
@@ -82,6 +119,12 @@ export async function archiveCategory(
   householdId: string,
   categoryId: string,
 ): Promise<void> {
+  // Archiving a SYSTEM category would take it out of the picker the household
+  // needs to file transfers under, and seedCategories would not bring it back:
+  // its onConflictDoNothing sees the seedKey still present and leaves the row
+  // archived. Not allowed.
+  if (await isSystemCategory(exec, householdId, categoryId)) throw new SystemCategoryError()
+
   await exec
     .update(categories)
     .set({ archivedAt: new Date() })

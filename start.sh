@@ -18,7 +18,7 @@ DB_NAME="${DB_NAME:-finance}"
 DB_USER="${DB_USER:-postgres}"
 DB_PASSWORD="${DB_PASSWORD:-password}"
 # Same image the integration tests use, so local dev and tests agree.
-DB_IMAGE="${DB_IMAGE:-postgres:16-alpine}"
+DB_IMAGE="${DB_IMAGE:-postgres:18-alpine}"
 APP_PORT="${APP_PORT:-3000}"
 
 PID_FILE="$ROOT/.dev-server.pid"
@@ -127,7 +127,7 @@ start_db() {
         -e POSTGRES_PASSWORD="$DB_PASSWORD" \
         -e POSTGRES_DB="$DB_NAME" \
         -p "${DB_PORT}:5432" \
-        -v "${DB_VOLUME}:/var/lib/postgresql/data" \
+        -v "${DB_VOLUME}:/var/lib/postgresql" \
         "$DB_IMAGE" >/dev/null 2>"$err"; then
         warn "$(cat "$err")"
         rm -f "$err"

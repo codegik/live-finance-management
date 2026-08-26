@@ -2,7 +2,12 @@
 
 import { revalidatePath } from 'next/cache'
 import { requireSession } from '@/lib/auth/session'
-import { archiveCategory, createCategory, updateCategory } from '@/lib/db/categories'
+import {
+  archiveCategory,
+  createCategory,
+  SystemCategoryError,
+  updateCategory,
+} from '@/lib/db/categories'
 import { getDb } from '@/lib/db/client'
 import { CATEGORY_GROUPS, type CategoryGroup } from '@/lib/domain/seed-categories'
 import {
@@ -10,6 +15,7 @@ import {
   INVALID_GROUP_ERROR,
   SAVED_MESSAGE,
   type SettingsState,
+  SYSTEM_CATEGORY_ERROR,
 } from './state'
 
 function revalidate(): void {
@@ -69,7 +75,12 @@ export async function saveCategoryAction(
   const group = parseGroup(String(formData.get('group') ?? ''))
   if (!group) return { error: INVALID_GROUP_ERROR, message: null }
 
-  await updateCategory(getDb(), session.householdId, categoryId, { name, group })
+  try {
+    await updateCategory(getDb(), session.householdId, categoryId, { name, group })
+  } catch (error) {
+    if (error instanceof SystemCategoryError) return { error: SYSTEM_CATEGORY_ERROR, message: null }
+    throw error
+  }
   revalidate()
   return { error: null, message: SAVED_MESSAGE }
 }
@@ -83,7 +94,12 @@ export async function archiveCategoryAction(
   if (!categoryId) return { error: EMPTY_NAME_ERROR, message: null }
 
   // Archive, never delete: Slice 3 budgets and past spend both point here.
-  await archiveCategory(getDb(), session.householdId, categoryId)
+  try {
+    await archiveCategory(getDb(), session.householdId, categoryId)
+  } catch (error) {
+    if (error instanceof SystemCategoryError) return { error: SYSTEM_CATEGORY_ERROR, message: null }
+    throw error
+  }
   revalidate()
   return { error: null, message: SAVED_MESSAGE }
 }

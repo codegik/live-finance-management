@@ -140,4 +140,22 @@ export const SEED_CATEGORIES: SeedCategory[] = [
   // ledger, and it works for a card Pluggy never linked -- the payment still
   // shows on the bank account. See lib/domain/budget-role.ts.
   { seedKey: 'card-payment', name: 'Pagamento de cartão', group: 'TRANSFER' },
+  // The manual escape hatch for money moved between the household's own
+  // accounts. lib/domain/account-transfers.ts pairs the two legs automatically
+  // by amount and date, but a transfer whose legs land a day apart, or differ
+  // by a fee, is not caught -- so the household files either leg here by hand
+  // and it leaves every total the same way a caught one does. A SYSTEM category
+  // (SYSTEM_CATEGORY_SEED_KEYS): the app files rows under it programmatically,
+  // so it cannot be renamed or archived out from under that code.
+  { seedKey: 'account-transfer', name: 'Transferência entre contas', group: 'TRANSFER' },
 ]
+
+/**
+ * Categories the app itself depends on by `seedKey`, which the household may
+ * therefore not rename or archive. They are already absent from the categories
+ * settings screen -- it lists only CATEGORY_GROUPS, and these are TRANSFER --
+ * so this set is the defense-in-depth that stops a crafted request from moving
+ * or retiring a category the classification code addresses by name. Enforced in
+ * lib/db/categories.ts.
+ */
+export const SYSTEM_CATEGORY_SEED_KEYS: ReadonlySet<string> = new Set(['account-transfer'])

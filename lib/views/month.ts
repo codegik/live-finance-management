@@ -342,8 +342,16 @@ export async function getMonthView(
     }
   })
 
+  // A category with nothing filed against it this month and no plan to hold it
+  // open is a dead line -- "R$ 0,00 · sem plano" -- so it is dropped. A row
+  // with a plan stays even at zero: an empty plan is the planned-vs-actual the
+  // household set it up to watch, and hiding it would erase the intent.
+  const visibleRows = rows.filter(
+    (row) => row.transactionCount > 0 || row.plannedCents !== null,
+  )
+
   const groups: MonthGroupView[] = CATEGORY_GROUPS.map((group) => {
-    const groupRows = rows.filter((row) => row.group === group)
+    const groupRows = visibleRows.filter((row) => row.group === group)
     return {
       group,
       label: CATEGORY_GROUP_LABELS[group],

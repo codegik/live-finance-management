@@ -1,6 +1,7 @@
 import { eq, inArray } from 'drizzle-orm'
 import type { Executor } from '@/lib/db/client'
 import { accounts, categories, connections, transactions } from '@/lib/db/schema'
+import { pairedOwnTransferIds } from '@/lib/domain/account-transfers'
 import { type BudgetRole, resolveBudgetRole } from '@/lib/domain/budget-role'
 import { pairedBankPaymentIds } from '@/lib/domain/card-payments'
 
@@ -45,6 +46,16 @@ import { pairedBankPaymentIds } from '@/lib/domain/card-payments'
  * pairs with nothing and returns to SPEND on the next run. An unlinked card is
  * untouched by construction -- it has no settlement to pair against -- so a
  * payment that is the only record of its spending stays counted.
+ *
+ * It does the same for a transfer between the household's OWN bank accounts:
+ * the debit that left one and the credit that arrived at another are the same
+ * money, counted as SPEND on one side and INCOME on the other, and pairing them
+ * on amount and date forces BOTH to TRANSFER (lib/domain/account-transfers.ts).
+ * This override is wider than the card one -- it beats an AUTO category, not
+ * only a defaulted SPEND -- because a transfer is routinely mis-tagged 'Casa' or
+ * 'Renda extra' by a rule or by Pluggy, and only a MANUAL filing is left to win
+ * over it. Where the legs are too far apart to pair, the household files either
+ * under the 'Transferência entre contas' category and the same TRANSFER follows.
  */
 export async function refreshBudgetRoles(
   exec: Executor,
@@ -57,8 +68,10 @@ export async function refreshBudgetRoles(
       pluggyCategory: transactions.pluggyCategory,
       amountCents: transactions.amountCents,
       budgetRole: transactions.budgetRole,
+      accountId: transactions.accountId,
       accountType: accounts.type,
       categoryGroup: categories.group,
+      categorySource: transactions.categorySource,
     })
     .from(transactions)
     .innerJoin(accounts, eq(transactions.accountId, accounts.id))
@@ -73,6 +86,24 @@ export async function refreshBudgetRoles(
   // fallback below, after resolveBudgetRole.
   const pairedBankLegs = pairedBankPaymentIds(rows)
 
+  // Both legs of every transfer between the household's OWN accounts -- the
+  // debit that left one account and the credit that arrived at another. Same
+  // reason it belongs here and not in classifyRole: it is a fact about two rows
+  // on two accounts, visible only to the pass that sees the whole household.
+  //
+  // Two kinds of row are held out of the pairing. Card legs, so an outgoing
+  // fatura payment is not also claimed here by a coincidental equal credit. And
+  // any MANUALLY filed row: hiding is symmetric -- a pair is hidden on both legs
+  // or neither -- so if the household insists ONE leg is real, excluding it
+  // leaves its partner unpaired too, and both keep their natural roles rather
+  // than one vanishing while the other counts and net drifts.
+  // See lib/domain/account-transfers.ts.
+  const excludeFromOwnPairing = new Set<string>(pairedBankLegs)
+  for (const row of rows) {
+    if (row.categorySource === 'MANUAL') excludeFromOwnPairing.add(row.id)
+  }
+  const pairedOwnTransfers = pairedOwnTransferIds(rows, { exclude: excludeFromOwnPairing })
+
   // Grouped by target role so one UPDATE covers every row moving to it, rather
   // than one statement per transaction across a three-year history.
   const byRole = new Map<BudgetRole, string[]>()
@@ -81,16 +112,27 @@ export async function refreshBudgetRoles(
       accountType: row.accountType,
       amountCents: row.amountCents,
     })
-    // Pairing forces TRANSFER only where the household has not already spoken.
+    // The card-payment leg is the narrower rule it always was, unchanged: it
+    // overrides only a defaulted SPEND with no category at all, so an
+    // uncategorized bank debit that settles a connected card leaves the totals.
     // resolveBudgetRole returns TRANSFER when a TRANSFER category is filed and
-    // INCOME/SPEND when any other category is -- and a payment the household
-    // deliberately filed as a real expense (a rare split, a disputed charge)
-    // must keep that filing. So the pairing applies only to rows still on their
-    // default SPEND, never overriding a resolved INCOME or a filed category.
-    const role =
-      resolved === 'SPEND' && row.categoryGroup == null && pairedBankLegs.has(row.id)
-        ? 'TRANSFER'
-        : resolved
+    // INCOME/SPEND when any other is -- and a payment the household deliberately
+    // filed as a real expense must keep that filing.
+    //
+    // The own-transfer legs are broader, and deliberately so: an outgoing leg
+    // resolves SPEND and an arriving leg resolves INCOME, so BOTH must be
+    // overridable, and Pluggy or a merchant rule routinely files a transfer
+    // under an ordinary category ('Casa', 'Renda extra') that a per-row rule
+    // cannot see through -- so this overrides an AUTO category too, which is what
+    // lets a transfer already tagged 'Casa' drop out without the household
+    // touching it. A MANUAL leg never reaches this set: it was held out of the
+    // pairing above, so a hand-filed row keeps whatever role it was filed under.
+    let role = resolved
+    if (resolved === 'SPEND' && row.categoryGroup == null && pairedBankLegs.has(row.id)) {
+      role = 'TRANSFER'
+    } else if (pairedOwnTransfers.has(row.id)) {
+      role = 'TRANSFER'
+    }
     // Only rows whose stored role is actually wrong, so a nightly no-op costs
     // no writes and the returned count is honest.
     if (role === row.budgetRole) continue
