@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
+import { sortByName } from '@/lib/utils'
 import type { AssignState } from '@/app/(app)/inbox/state'
 import type { InboxGroup } from '@/lib/views/inbox'
 
@@ -132,7 +133,7 @@ function GroupForm({
               <option value="" disabled>
                 Escolher categoria…
               </option>
-              {categories.map((category) => (
+              {sortByName(categories).map((category) => (
                 <option key={category.id} value={category.id}>
                   {category.name}
                 </option>

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
+import { sortByName } from '@/lib/utils'
 import type { SettingsState } from '../categories/state'
 import { createRuleAction, deleteRuleAction } from './actions'
 
@@ -60,7 +61,7 @@ export function CreateRuleForm({
             <option value="" disabled>
               Choose…
             </option>
-            {categories.map((category) => (
+            {sortByName(categories).map((category) => (
               <option key={category.id} value={category.id}>
                 {category.name}
               </option>

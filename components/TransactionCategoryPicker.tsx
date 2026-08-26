@@ -4,7 +4,7 @@ import { ChevronDown, Tag, TriangleAlert } from 'lucide-react'
 import { useActionState, useEffect, useRef, useState } from 'react'
 import { setTransactionCategoryAction } from '@/app/(app)/dashboard/actions'
 import type { RecategorizeState } from '@/app/(app)/dashboard/state'
-import { cn } from '@/lib/utils'
+import { cn, sortByName } from '@/lib/utils'
 
 const INITIAL: RecategorizeState = { error: null, message: null }
 
@@ -120,7 +120,7 @@ export function TransactionCategoryPicker({
               {placeholder}
             </option>
           )}
-          {categories.map((category) => (
+          {sortByName(categories).map((category) => (
             <option key={category.id} value={category.id}>
               {category.name}
             </option>
