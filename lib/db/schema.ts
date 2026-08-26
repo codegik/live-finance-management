@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm'
 import {
   bigint,
   date,
@@ -175,6 +176,15 @@ export const merchantRules = pgTable(
     categoryId: uuid('category_id')
       .notNull()
       .references(() => categories.id, { onDelete: 'cascade' }),
+    // Optional bank scope. Null means the rule applies to every bank; when
+    // set, it only matches transactions whose account belongs to this
+    // connection. A household needs this because one descriptor string can
+    // occur at more than one bank and mean different things -- so the same
+    // pattern can carry two rules, one per bank. Cascades on connection
+    // removal: a rule scoped to a bank that no longer exists matches nothing.
+    connectionId: uuid('connection_id').references(() => connections.id, {
+      onDelete: 'cascade',
+    }),
     // Lower wins. Inbox-created EXACT rules default to 100, hand-written
     // CONTAINS rules to 200, so specific beats broad unless reordered.
     priority: integer('priority').notNull().default(100),
@@ -182,7 +192,16 @@ export const merchantRules = pgTable(
   },
   (t) => [
     index('merchant_rule_household_idx').on(t.householdId, t.priority),
-    uniqueIndex('merchant_rule_unique').on(t.householdId, t.matchType, t.pattern),
+    // connection_id is coalesced to a fixed sentinel so two unscoped rules
+    // (null bank) still collide as duplicates -- Postgres treats NULLs as
+    // distinct and would otherwise allow both -- while a bank-scoped rule and
+    // an unscoped one sharing a pattern coexist.
+    uniqueIndex('merchant_rule_unique').on(
+      t.householdId,
+      t.matchType,
+      t.pattern,
+      sql`coalesce(${t.connectionId}, '00000000-0000-0000-0000-000000000000')`,
+    ),
   ],
 )
 

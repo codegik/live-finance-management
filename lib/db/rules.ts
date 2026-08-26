@@ -3,8 +3,9 @@ import { normalizeMerchant } from '@/lib/domain/categorize'
 import { normalizedSeedRules } from '@/lib/domain/seed-rules'
 import { recategorize } from '@/lib/sync/categorize'
 import { categoryBelongsToHousehold } from './categories'
+import { connectionBelongsToHousehold } from './connections'
 import type { Db, Executor } from './client'
-import { categories, merchantRules } from './schema'
+import { categories, connections, merchantRules } from './schema'
 
 /** Inbox-created rules match one exact merchant, so they win by default. */
 export const DEFAULT_EXACT_PRIORITY = 100
@@ -18,23 +19,35 @@ export type RuleRow = {
   priority: number
   categoryId: string
   categoryName: string
+  // The bank this rule is pinned to, or null when it applies to every bank.
+  connectionId: string | null
+  institution: string | null
 }
 
 export async function listRules(exec: Executor, householdId: string): Promise<RuleRow[]> {
   const rows = await exec
-    .select({ rule: merchantRules, categoryName: categories.name })
+    .select({
+      rule: merchantRules,
+      categoryName: categories.name,
+      // Left join: a rule with no bank scope has no connection row, so its
+      // institution comes back null rather than dropping the rule.
+      institution: connections.institution,
+    })
     .from(merchantRules)
     .innerJoin(categories, eq(merchantRules.categoryId, categories.id))
+    .leftJoin(connections, eq(merchantRules.connectionId, connections.id))
     .where(eq(merchantRules.householdId, householdId))
     .orderBy(asc(merchantRules.priority), asc(merchantRules.pattern))
 
-  return rows.map(({ rule, categoryName }) => ({
+  return rows.map(({ rule, categoryName, institution }) => ({
     id: rule.id,
     matchType: rule.matchType,
     pattern: rule.pattern,
     priority: rule.priority,
     categoryId: rule.categoryId,
     categoryName,
+    connectionId: rule.connectionId,
+    institution,
   }))
 }
 
@@ -42,6 +55,8 @@ export type CreateRuleInput = {
   matchType: 'EXACT' | 'CONTAINS'
   pattern: string
   categoryId: string
+  // Optional bank scope. Null/undefined creates a rule matching every bank.
+  connectionId?: string | null
   priority?: number
 }
 
@@ -65,6 +80,10 @@ export async function createRule(
     input.priority ??
     (input.matchType === 'EXACT' ? DEFAULT_EXACT_PRIORITY : DEFAULT_CONTAINS_PRIORITY)
 
+  // Normalize away an empty bank selection so "any bank" is always null,
+  // never the empty string a form submits.
+  const connectionId = input.connectionId || null
+
   return db.transaction(async (tx) => {
     // A category id from another household must never be usable here: it
     // would insert successfully against the global FK and then recategorize
@@ -74,6 +93,13 @@ export async function createRule(
       throw new Error('UNKNOWN_CATEGORY')
     }
 
+    // Same reasoning for the bank scope: a connection id from another
+    // household would pass the global FK yet scope this rule to a bank the
+    // household does not own -- so it must match nothing rather than insert.
+    if (connectionId && !(await connectionBelongsToHousehold(tx, householdId, connectionId))) {
+      throw new Error('UNKNOWN_CONNECTION')
+    }
+
     const [rule] = await tx
       .insert(merchantRules)
       .values({
@@ -81,13 +107,14 @@ export async function createRule(
         matchType: input.matchType,
         pattern,
         categoryId: input.categoryId,
+        connectionId,
         priority,
       })
       .returning({ id: merchantRules.id })
 
     const { changed } = await recategorize(tx, {
       householdId,
-      match: { matchType: input.matchType, pattern },
+      match: { matchType: input.matchType, pattern, connectionId },
     })
 
     return { ruleId: rule.id, changed }
@@ -101,7 +128,11 @@ export async function deleteRule(
 ): Promise<{ changed: number }> {
   return db.transaction(async (tx) => {
     const [rule] = await tx
-      .select({ matchType: merchantRules.matchType, pattern: merchantRules.pattern })
+      .select({
+        matchType: merchantRules.matchType,
+        pattern: merchantRules.pattern,
+        connectionId: merchantRules.connectionId,
+      })
       .from(merchantRules)
       .where(and(eq(merchantRules.id, ruleId), eq(merchantRules.householdId, householdId)))
       .limit(1)
@@ -113,10 +144,12 @@ export async function deleteRule(
       .where(and(eq(merchantRules.id, ruleId), eq(merchantRules.householdId, householdId)))
 
     // Recategorizing what the deleted rule used to match is what makes
-    // removing a bad rule undo it, rather than leaving stale assignments.
+    // removing a bad rule undo it, rather than leaving stale assignments. A
+    // bank-scoped rule only touched its own bank, so the undo carries the
+    // same scope.
     return recategorize(tx, {
       householdId,
-      match: { matchType: rule.matchType, pattern: rule.pattern },
+      match: { matchType: rule.matchType, pattern: rule.pattern, connectionId: rule.connectionId },
     })
   })
 }

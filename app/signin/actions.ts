@@ -10,10 +10,10 @@ export async function signInAction(_prev: SignInState, formData: FormData): Prom
     await signIn('credentials', {
       email: String(formData.get('email') ?? ''),
       password: String(formData.get('password') ?? ''),
-      redirectTo: '/ledger',
+      redirectTo: '/dashboard',
     })
   } catch (error) {
-    // On success signIn throws the NEXT_REDIRECT that navigates to /ledger.
+    // On success signIn throws the NEXT_REDIRECT that navigates to /dashboard.
     // Swallowing it here would strand the user on the sign-in page.
     if (isNextRedirectError(error)) throw error
 

@@ -11,6 +11,7 @@ import {
   SAVED_MESSAGE,
   type SettingsState,
   UNKNOWN_CATEGORY_ERROR,
+  UNKNOWN_CONNECTION_ERROR,
 } from '../categories/state'
 
 function revalidate(): void {
@@ -27,6 +28,8 @@ export async function createRuleAction(
   const pattern = String(formData.get('pattern') ?? '').trim()
   const categoryId = String(formData.get('categoryId') ?? '')
   const matchType = formData.get('matchType') === 'CONTAINS' ? 'CONTAINS' : 'EXACT'
+  // Optional: an empty selection is "any bank", carried as null.
+  const connectionId = String(formData.get('connectionId') ?? '') || null
   if (!pattern || !categoryId) return { error: EMPTY_RULE_ERROR, message: null }
 
   let changed = 0
@@ -35,6 +38,7 @@ export async function createRuleAction(
       matchType,
       pattern,
       categoryId,
+      connectionId,
     }))
   } catch (error) {
     // A pattern that normalizes to nothing, one that duplicates an existing
@@ -45,6 +49,9 @@ export async function createRuleAction(
     }
     if (error instanceof Error && error.message === 'UNKNOWN_CATEGORY') {
       return { error: UNKNOWN_CATEGORY_ERROR, message: null }
+    }
+    if (error instanceof Error && error.message === 'UNKNOWN_CONNECTION') {
+      return { error: UNKNOWN_CONNECTION_ERROR, message: null }
     }
     // postgres.js surfaces a unique-violation as a PostgresError with a
     // Postgres error code, not a distinguishable message -- narrow on the

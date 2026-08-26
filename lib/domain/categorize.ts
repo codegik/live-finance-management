@@ -53,6 +53,9 @@ export type RuleForResolution = {
   pattern: string
   categoryId: string
   priority: number
+  // Optional bank scope. Null/undefined applies to every bank; set, the rule
+  // only matches a transaction whose connection is the same.
+  connectionId?: string | null
 }
 
 export type TransactionForResolution = {
@@ -60,6 +63,10 @@ export type TransactionForResolution = {
   pluggyCategory: string | null
   categoryId: string | null
   categorySource: CategorySource | null
+  // The connection (bank) the transaction's account belongs to, used to
+  // honour a rule's optional bank scope. Undefined where a caller matches
+  // merchant-only and has no bank to check against.
+  connectionId?: string | null
 }
 
 export type Resolution = { categoryId: string | null; source: CategorySource | null }
@@ -92,9 +99,14 @@ export function resolveCategory(
     const ordered = [...rules].sort(
       (a, b) => a.priority - b.priority || a.id.localeCompare(b.id),
     )
-    const hit = ordered.find((rule) =>
-      rule.matchType === 'EXACT' ? merchant === rule.pattern : merchant.includes(rule.pattern),
-    )
+    const hit = ordered.find((rule) => {
+      // A bank-scoped rule only applies to its own bank; an unscoped rule
+      // (null connectionId) applies to every bank as before.
+      if (rule.connectionId && rule.connectionId !== tx.connectionId) return false
+      return rule.matchType === 'EXACT'
+        ? merchant === rule.pattern
+        : merchant.includes(rule.pattern)
+    })
     if (hit) return { categoryId: hit.categoryId, source: 'RULE' }
   }
 

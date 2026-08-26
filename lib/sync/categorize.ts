@@ -2,12 +2,22 @@ import { and, eq, inArray, isNull, like, ne, or } from 'drizzle-orm'
 import type { Executor } from '@/lib/db/client'
 import { escapeLike } from '@/lib/db/like'
 import { householdTransactionIds, refreshRolesForTransactions } from '@/lib/db/transactions'
-import { categories, merchantRules, transactions } from '@/lib/db/schema'
+import { accounts, categories, merchantRules, transactions } from '@/lib/db/schema'
 import { normalizeMerchant, resolveCategory } from '@/lib/domain/categorize'
 
 export type RecategorizeScope =
   | { householdId: string; transactionIds: string[] }
-  | { householdId: string; match: { matchType: 'EXACT' | 'CONTAINS'; pattern: string } }
+  | {
+      householdId: string
+      match: {
+        matchType: 'EXACT' | 'CONTAINS'
+        pattern: string
+        // A bank-scoped rule only ever touches its own bank, so its
+        // create/delete backfill is narrowed to that connection rather than
+        // rescanning every bank's transactions sharing the pattern.
+        connectionId?: string | null
+      }
+    }
   | { householdId: string }
 
 /**
@@ -56,6 +66,7 @@ export async function recategorize(
       pattern: merchantRules.pattern,
       categoryId: merchantRules.categoryId,
       priority: merchantRules.priority,
+      connectionId: merchantRules.connectionId,
     })
     .from(merchantRules)
     .where(eq(merchantRules.householdId, scope.householdId))
@@ -76,6 +87,11 @@ export async function recategorize(
         ? eq(transactions.merchantNormalized, scope.match.pattern)
         : like(transactions.merchantNormalized, `%${escapeLike(scope.match.pattern)}%`),
     )
+    // A bank-scoped rule can only ever have moved its own bank's rows, so its
+    // backfill (create) and undo (delete) need touch no others.
+    if (scope.match.connectionId) {
+      filters.push(eq(accounts.connectionId, scope.match.connectionId))
+    }
   }
 
   const rows = await exec
@@ -87,8 +103,12 @@ export async function recategorize(
       pluggyCategory: transactions.pluggyCategory,
       categoryId: transactions.categoryId,
       categorySource: transactions.categorySource,
+      // The bank each row belongs to, so resolveCategory can honour a rule's
+      // optional bank scope. Reached through account -> connection.
+      connectionId: accounts.connectionId,
     })
     .from(transactions)
+    .innerJoin(accounts, eq(transactions.accountId, accounts.id))
     .where(and(...filters))
 
   let changed = 0
@@ -109,6 +129,7 @@ export async function recategorize(
         pluggyCategory: row.pluggyCategory,
         categoryId: row.categoryId,
         categorySource: row.categorySource,
+        connectionId: row.connectionId,
       },
       rules,
       categoryIdBySeedKey,

@@ -13,25 +13,35 @@ beforeEach(async () => {
   await resetDb()
 })
 
+async function seedConnection(
+  db: ReturnType<typeof testDb>,
+  householdId: string,
+  ownerUserId: string,
+  institution: string,
+): Promise<{ connectionId: string; accountId: string }> {
+  const [connection] = await db
+    .insert(connections)
+    .values({
+      householdId,
+      ownerUserId,
+      pluggyItemId: `item-${crypto.randomUUID()}`,
+      institution,
+      status: 'UPDATED',
+      lastSyncedAt: new Date(),
+    })
+    .returning({ id: connections.id })
+  const accountId = await seedAccount(db, connection.id)
+  return { connectionId: connection.id, accountId }
+}
+
 async function seedHousehold() {
   const db = testDb()
   const { householdId, userId } = await createHousehold(db, {
     name: 'Klassmann',
     owner: { email: 'inacio@example.com', name: 'Inacio', passwordHash: await hashPassword('pw') },
   })
-  const [connection] = await db
-    .insert(connections)
-    .values({
-      householdId,
-      ownerUserId: userId,
-      pluggyItemId: `item-${crypto.randomUUID()}`,
-      institution: 'Nubank',
-      status: 'UPDATED',
-      lastSyncedAt: new Date(),
-    })
-    .returning({ id: connections.id })
-  const accountId = await seedAccount(db, connection.id)
-  return { db, householdId, accountId }
+  const { connectionId, accountId } = await seedConnection(db, householdId, userId, 'Nubank')
+  return { db, householdId, userId, connectionId, accountId }
 }
 
 async function categoryNamed(householdId: string, name: string): Promise<string> {
@@ -215,6 +225,120 @@ it('gives an EXACT rule a lower priority number than a hand-written CONTAINS rul
   const contains = rules.find((r) => r.matchType === 'CONTAINS')!
   expect(exact.priority).toBeLessThan(contains.priority)
   expect(exact.categoryName).toBe('Supermercado')
+})
+
+it('applies a bank-scoped rule only to its own bank, leaving the same descriptor elsewhere in the inbox', async () => {
+  const { db, householdId, userId, connectionId, accountId } = await seedHousehold()
+  const other = await seedConnection(db, householdId, userId, 'Itau')
+  const nubankTx = await insertTransaction(db, accountId, { description: 'PADARIA CENTRAL' })
+  const itauTx = await insertTransaction(db, other.accountId, { description: 'PADARIA CENTRAL' })
+  const supermarket = await categoryNamed(householdId, 'Supermercado')
+
+  const { changed } = await createRule(db, householdId, {
+    matchType: 'EXACT',
+    pattern: 'PADARIA CENTRAL',
+    categoryId: supermarket,
+    connectionId,
+  })
+
+  // Only the Nubank row moved; the identical Itau descriptor stayed untouched,
+  // which is the whole reason a bank has to be part of the match.
+  expect(changed).toBe(1)
+  const rows = await listTransactions(db, householdId)
+  expect(rows.find((r) => r.id === nubankTx)!.categoryId).toBe(supermarket)
+  expect(rows.find((r) => r.id === itauTx)!.categoryId).toBeNull()
+})
+
+it('lets two rules share a pattern when each is pinned to a different bank', async () => {
+  const { db, householdId, userId, connectionId, accountId } = await seedHousehold()
+  const other = await seedConnection(db, householdId, userId, 'Itau')
+  const nubankTx = await insertTransaction(db, accountId, { description: 'PADARIA CENTRAL' })
+  const itauTx = await insertTransaction(db, other.accountId, { description: 'PADARIA CENTRAL' })
+  const supermarket = await categoryNamed(householdId, 'Supermercado')
+  const leisure = await categoryNamed(householdId, 'Lazer')
+
+  await createRule(db, householdId, {
+    matchType: 'EXACT',
+    pattern: 'PADARIA CENTRAL',
+    categoryId: supermarket,
+    connectionId,
+  })
+  // Same normalized pattern, different bank -- the unique index coalesces the
+  // bank so this is a distinct row rather than a duplicate.
+  await createRule(db, householdId, {
+    matchType: 'EXACT',
+    pattern: 'PADARIA CENTRAL',
+    categoryId: leisure,
+    connectionId: other.connectionId,
+  })
+
+  const rows = await listTransactions(db, householdId)
+  expect(rows.find((r) => r.id === nubankTx)!.categoryId).toBe(supermarket)
+  expect(rows.find((r) => r.id === itauTx)!.categoryId).toBe(leisure)
+})
+
+it('undoes only its own bank when a bank-scoped rule is deleted', async () => {
+  const { db, householdId, userId, connectionId, accountId } = await seedHousehold()
+  const other = await seedConnection(db, householdId, userId, 'Itau')
+  const nubankTx = await insertTransaction(db, accountId, { description: 'PADARIA CENTRAL' })
+  const itauTx = await insertTransaction(db, other.accountId, { description: 'PADARIA CENTRAL' })
+  const supermarket = await categoryNamed(householdId, 'Supermercado')
+  const leisure = await categoryNamed(householdId, 'Lazer')
+  const { ruleId } = await createRule(db, householdId, {
+    matchType: 'EXACT',
+    pattern: 'PADARIA CENTRAL',
+    categoryId: supermarket,
+    connectionId,
+  })
+  await createRule(db, householdId, {
+    matchType: 'EXACT',
+    pattern: 'PADARIA CENTRAL',
+    categoryId: leisure,
+    connectionId: other.connectionId,
+  })
+
+  const { changed } = await deleteRule(db, householdId, ruleId)
+
+  // The Nubank row returned to the inbox; the Itau rule kept its own row.
+  expect(changed).toBe(1)
+  const rows = await listTransactions(db, householdId)
+  expect(rows.find((r) => r.id === nubankTx)!.categoryId).toBeNull()
+  expect(rows.find((r) => r.id === itauTx)!.categoryId).toBe(leisure)
+})
+
+it("rejects a rule pinned to another household's bank, leaving no row", async () => {
+  const { db, householdId } = await seedHousehold()
+  const supermarket = await categoryNamed(householdId, 'Supermercado')
+  const { householdId: otherId, userId: otherUserId } = await createHousehold(db, {
+    name: 'Other',
+    owner: { email: 'other-bank@example.com', name: 'Other', passwordHash: await hashPassword('pw') },
+  })
+  const otherBank = await seedConnection(db, otherId, otherUserId, 'Bradesco')
+
+  await expect(
+    createRule(db, householdId, {
+      matchType: 'EXACT',
+      pattern: 'PADARIA CENTRAL',
+      categoryId: supermarket,
+      connectionId: otherBank.connectionId,
+    }),
+  ).rejects.toThrow('UNKNOWN_CONNECTION')
+
+  expect(await listRules(db, householdId)).toEqual([])
+})
+
+it('still rejects two unscoped rules with the same pattern as duplicates', async () => {
+  const { db, householdId } = await seedHousehold()
+  const supermarket = await categoryNamed(householdId, 'Supermercado')
+  await createRule(db, householdId, { matchType: 'EXACT', pattern: 'PADARIA CENTRAL', categoryId: supermarket })
+
+  // Both have a null bank, which the unique index coalesces to one sentinel,
+  // so the second is the same key -- the any-bank duplicate guard survives.
+  await expect(
+    createRule(db, householdId, { matchType: 'EXACT', pattern: 'PADARIA CENTRAL', categoryId: supermarket }),
+  ).rejects.toThrow()
+
+  expect(await listRules(db, householdId)).toHaveLength(1)
 })
 
 it('scopes rule listing and deletion to the household', async () => {

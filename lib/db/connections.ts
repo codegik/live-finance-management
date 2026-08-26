@@ -1,11 +1,29 @@
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { staleReason, type StaleReason } from '@/lib/domain/health'
-import type { Db } from './client'
+import type { Db, Executor } from './client'
 import { listHouseholdUsers } from './households'
 import { accounts, connections, transactions, type Account, type Connection } from './schema'
 
 export async function listConnections(db: Db, householdId: string): Promise<Connection[]> {
   return db.select().from(connections).where(eq(connections.householdId, householdId))
+}
+
+/**
+ * Whether this connection (bank) belongs to the household. Used before a rule
+ * pins itself to a bank, so a connection id from another household can never
+ * scope this household's rule -- the global FK alone would accept it.
+ */
+export async function connectionBelongsToHousehold(
+  exec: Executor,
+  householdId: string,
+  connectionId: string,
+): Promise<boolean> {
+  const rows = await exec
+    .select({ id: connections.id })
+    .from(connections)
+    .where(and(eq(connections.id, connectionId), eq(connections.householdId, householdId)))
+    .limit(1)
+  return rows.length > 0
 }
 
 // Scoped by household in the query itself: an update-mode connect token must

@@ -27,7 +27,13 @@ function Feedback({ state }: { state: SettingsState }) {
   )
 }
 
-export function CreateRuleForm({ categories }: { categories: { id: string; name: string }[] }) {
+export function CreateRuleForm({
+  categories,
+  connections,
+}: {
+  categories: { id: string; name: string }[]
+  connections: { id: string; institution: string }[]
+}) {
   const [state, formAction, pending] = useActionState(createRuleAction, INITIAL)
 
   return (
@@ -52,6 +58,19 @@ export function CreateRuleForm({ categories }: { categories: { id: string; name:
           {categories.map((category) => (
             <option key={category.id} value={category.id}>
               {category.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      {/* Optional. The same descriptor can appear at more than one bank, so a
+          rule can be pinned to one; the empty default matches every bank. */}
+      <label>
+        Bank
+        <select name="connectionId" defaultValue="">
+          <option value="">Any bank</option>
+          {connections.map((connection) => (
+            <option key={connection.id} value={connection.id}>
+              {connection.institution}
             </option>
           ))}
         </select>
