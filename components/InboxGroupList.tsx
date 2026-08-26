@@ -30,9 +30,13 @@ function countLabel(count: number): string {
   return count === 1 ? '1 lançamento' : `${count} lançamentos`
 }
 
-/** `2026-08-17` as `17/08`, which is how a statement is read. */
+/**
+ * `2026-08-17` as `17/08/2026`. The year is kept here, unlike the monthly
+ * view: the inbox groups transactions across every synced month, so a bare
+ * `17/08` is ambiguous about which August a charge landed in.
+ */
 function shortDate(date: string): string {
-  return `${date.slice(8, 10)}/${date.slice(5, 7)}`
+  return `${date.slice(8, 10)}/${date.slice(5, 7)}/${date.slice(0, 4)}`
 }
 
 /**
