@@ -20,7 +20,7 @@ export function SignInForm() {
         <input name="password" type="password" required autoComplete="current-password" />
       </label>
       {state.error ? (
-        <p role="alert" className="form__error">
+        <p role="alert" className="text-[0.82rem] text-neg">
           {state.error}
         </p>
       ) : null}

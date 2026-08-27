@@ -41,6 +41,10 @@ export type MonthTransaction = {
   amountCents: number
   description: string
   accountName: string
+  /** Which bank this account is at, for the compact bank label. */
+  institution: string
+  /** Card or bank -- a card row is labelled by its digits, a bank by its name. */
+  accountType: 'CREDIT' | 'BANK'
   last4: string | null
   /** `3/10` when this is an instalment, null otherwise. */
   installment: string | null
@@ -200,6 +204,8 @@ export async function getMonthView(
         installmentNumber: transactions.installmentNumber,
         installmentTotal: transactions.installmentTotal,
         accountName: accounts.name,
+        accountType: accounts.type,
+        institution: connections.institution,
         last4: accounts.last4,
       })
       .from(transactions)
@@ -239,6 +245,8 @@ export async function getMonthView(
       row.budgetRole === 'INCOME' ? toActualCents(row.amountCents, 'RECEITA') : row.amountCents,
     description: row.description,
     accountName: row.accountName,
+    institution: row.institution,
+    accountType: row.accountType,
     last4: row.last4,
     installment:
       row.installmentNumber && row.installmentTotal

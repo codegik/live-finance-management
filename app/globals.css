@@ -1,27 +1,21 @@
 /*
- * Tailwind v4 + the app's original hand-written stylesheet, side by side.
+ * Tailwind v4 with the app's design tokens and a thin base layer.
  *
- * legacy.css is imported INTO Tailwind's `base` layer, not left unlayered.
- * That one word is the whole trick: the old sheet styles bare `button`,
- * `input`, `select` and `form` by element, and an unlayered element rule
- * outranks a Tailwind utility no matter the specificity. Parked in `base`,
- * those rules still theme every screen that has not been migrated, yet a
- * utility class on a new component now wins -- so shadcn-style components
- * render correctly without touching a single line of the 1,000-line sheet.
- *
- * Preflight is imported into `base` first (by `@import "tailwindcss"`), so the
- * legacy rules that follow override it and the un-migrated pages look
- * unchanged.
+ * There is no separate hand-written stylesheet any more: every screen is styled
+ * with utility classes. What survives here is only what a utility cannot carry
+ * on its own -- the palette every token maps to, and the element defaults
+ * (`body`, `button`, `input`, `form`, `label`) that theme a bare control before
+ * a single class is added. Those live in `@layer base`, so any utility on a
+ * component still outranks them.
  */
 @import 'tailwindcss';
-@import './legacy.css' layer(base);
 
 /*
- * One bridge from the app's own tokens (legacy.css :root, which already flips
+ * One bridge from the app's own tokens (the `:root` block below, which flips
  * for light mode via prefers-color-scheme) to the names Tailwind utilities and
  * shadcn components expect. `inline` emits the var() into each utility rather
  * than a frozen hex, so `bg-card`, `text-muted-foreground` and the rest follow
- * the same light/dark switch the legacy screens do -- one palette, not two.
+ * the same light/dark switch the whole app does -- one palette, not two.
  */
 @theme inline {
   --font-sans: var(--font);
@@ -48,7 +42,7 @@
   --color-input: var(--border-strong);
   --color-ring: var(--accent);
 
-  /* The app's own names, so migrated screens can reach the full palette. */
+  /* The app's own names, so screens can reach the full palette. */
   --color-surface: var(--surface);
   --color-surface-2: var(--surface-2);
   --color-surface-3: var(--surface-3);
@@ -69,4 +63,192 @@
   --radius-md: var(--radius);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  /*
+   * One token set, two themes. Dark is the default rather than a variant: this
+   * app is read at night, after the day's spending has landed, and a white page
+   * at that hour is the reason the household stopped opening it.
+   *
+   * Colour carries meaning here and is never decorative. --pos is money the
+   * household kept, --neg is a limit already broken, --warn is a forecast that
+   * has not happened yet. Nothing else is allowed to be green, red or amber.
+   */
+  :root {
+    color-scheme: dark;
+
+    --bg: #0a0b0d;
+    --surface: #121418;
+    --surface-2: #171a1f;
+    --surface-3: #1d2127;
+    --border: #23272e;
+    --border-strong: #313741;
+
+    --text: #e7eaee;
+    --text-dim: #98a1ad;
+    --text-faint: #6a7380;
+
+    --accent: #6b95ff;
+    --accent-dim: #24304d;
+    --pos: #3ddc97;
+    --pos-dim: #123528;
+    --neg: #ff6b6b;
+    --neg-dim: #3d1d1f;
+    --warn: #f5b544;
+    --warn-dim: #3a2c12;
+
+    --radius: 10px;
+    --radius-sm: 6px;
+    --gap: 0.75rem;
+
+    --font: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    /* Every figure in this app is money, and money must align in a column. */
+    --font-num: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace;
+  }
+
+  @media (prefers-color-scheme: light) {
+    :root {
+      color-scheme: light;
+
+      --bg: #f6f7f9;
+      --surface: #ffffff;
+      --surface-2: #fafbfc;
+      --surface-3: #f0f2f5;
+      --border: #e3e6ea;
+      --border-strong: #cbd1d9;
+
+      --text: #14171c;
+      --text-dim: #5c6570;
+      --text-faint: #868f9b;
+
+      --accent: #2f5fe0;
+      --accent-dim: #e6ecfd;
+      --pos: #0f8a5f;
+      --pos-dim: #e2f5ec;
+      --neg: #cf3838;
+      --neg-dim: #fde9e9;
+      --warn: #a96c07;
+      --warn-dim: #fdf1dc;
+    }
+  }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.55 var(--font);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-weight: 620;
+    letter-spacing: -0.015em;
+  }
+  h1 {
+    font-size: 1.35rem;
+    margin: 0;
+  }
+  h2 {
+    font-size: 1rem;
+    margin: 0;
+  }
+
+  a {
+    color: var(--accent);
+    text-decoration: none;
+  }
+  a:hover {
+    text-decoration: underline;
+  }
+
+  /* A bare control is themed before a single class touches it, so an
+     un-classed <button> or <input> still looks like it belongs. Utilities on a
+     component win over these, because @layer utilities is ordered after base. */
+  input,
+  select,
+  button,
+  textarea {
+    font: inherit;
+    color: inherit;
+  }
+
+  /* Checkboxes and radios are excluded on purpose: the padding and the surface
+     fill below are the anatomy of a text field, and on a native tick box they
+     only inflate the hit target into a grey slab. */
+  input:not([type='checkbox']):not([type='radio']),
+  select,
+  textarea {
+    padding: 0.5rem 0.6rem;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+  }
+
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  button:focus-visible,
+  a:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+
+  input[type='number'] {
+    font-family: var(--font-num);
+  }
+
+  button {
+    padding: 0.5rem 0.85rem;
+    background: var(--surface-3);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    font-size: 0.875rem;
+    font-weight: 540;
+    cursor: pointer;
+  }
+  button:hover {
+    background: var(--border);
+  }
+  button[type='submit'] {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #06080d;
+  }
+  button[type='submit']:hover {
+    filter: brightness(1.08);
+  }
+
+  form {
+    display: grid;
+    gap: var(--gap);
+  }
+  label {
+    display: grid;
+    gap: 0.3rem;
+    font-size: 0.85rem;
+    color: var(--text-dim);
+  }
+
+  /* A tick box belongs BESIDE its caption, never above it. The stacked grid
+     above is the right shape for a field with a caption over it; applied to a
+     checkbox it hands the box its own full-width row and stretches it. */
+  label:has(> input[type='checkbox']),
+  label:has(> input[type='radio']) {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  input[type='checkbox'],
+  input[type='radio'] {
+    flex: none;
+    justify-self: start;
+    width: 1rem;
+    height: 1rem;
+    margin: 0;
+    accent-color: var(--accent);
+  }
 }

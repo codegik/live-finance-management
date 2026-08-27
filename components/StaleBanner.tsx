@@ -5,7 +5,10 @@ export function StaleBanner({ health }: { health: HouseholdHealth }) {
   if (health.allFresh) return null
 
   return (
-    <aside role="alert" className="banner banner--stale">
+    <aside
+      role="alert"
+      className="mb-4 flex gap-[0.6rem] rounded-md border border-warn/40 bg-warn-dim px-[0.9rem] py-[0.7rem] text-[0.85rem] text-warn"
+    >
       <strong>Some data may be missing.</strong>
       <ul>
         {health.stale.map((s) => (

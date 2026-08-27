@@ -62,3 +62,23 @@ export function monthShort(period: string): string {
 export function percent(fraction: number): string {
   return `${Math.round(fraction * 100)}%`
 }
+
+/**
+ * The account a charge sits on, compressed to what a phone screen can hold.
+ *
+ * The full "LATAM PASS ITAU MASTERCARD BLACK ···· 1885" is a marketing name
+ * that eats the whole row on mobile and then truncates -- dropping the very
+ * digits and instalment that identify the charge. A card is named by its last
+ * four; a bank by its own short name (first word only, so "Banco do Brasil"
+ * is "Banco") and the same four. Enough to tell one account from another
+ * without spending the width the amount needs.
+ */
+export function accountLabel(input: {
+  type: 'CREDIT' | 'BANK'
+  institution: string
+  last4: string | null
+}): string {
+  const tail = input.last4 ? ` ···· ${input.last4}` : ''
+  if (input.type === 'CREDIT') return `Cartão${tail}`
+  return `${input.institution.split(' ')[0]}${tail}`
+}

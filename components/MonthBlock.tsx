@@ -1,5 +1,6 @@
 import { PlanEditor } from '@/components/PlanEditor'
 import { TransactionCategoryPicker } from '@/components/TransactionCategoryPicker'
+import { TransactionDetail } from '@/components/TransactionDetail'
 import { Card } from '@/components/ui/card'
 import { brl, brlSigned, percent } from '@/lib/format'
 import { MORE_IS_BETTER } from '@/lib/domain/seed-categories'
@@ -56,18 +57,39 @@ export function rowTone(row: MonthRow, stance: MonthStance): RowTone {
   return 'plain'
 }
 
+/**
+ * One category line: label, its figure, and (when it has a plan) a track and a
+ * meta line. A flex row that wraps -- the amount stays glued to the label, and
+ * the track and meta each take a full line of their own via basis-full.
+ */
+const ROW =
+  'flex flex-wrap items-baseline gap-x-[0.6rem] gap-y-[0.15rem] px-3 py-[0.6rem] transition-colors hover:bg-surface-2'
+/** The clickable summary variant of a row: a pointer and no default marker. The
+ *  open tint lives on the <details> itself so the summary and its transactions
+ *  read as one connected block, not two separate boxes. */
+const ROW_SUMMARY = `${ROW} cursor-pointer list-none [&::-webkit-details-marker]:hidden`
+const ROW_NAME = 'min-w-0 flex-[1_1_auto] text-[0.875rem]'
+/** The name inside a summary carries the › caret that turns when the row opens. */
+const ROW_NAME_CARET = `${ROW_NAME} before:inline-block before:w-[0.85rem] before:text-text-faint before:transition-transform before:content-['›'] group-open:before:rotate-90`
+const ROW_AMOUNTS = 'flex-[0_1_auto] whitespace-nowrap text-left font-mono text-[0.875rem] font-medium'
+const ROW_META = 'flex basis-full flex-wrap gap-2 text-[0.74rem] text-text-faint'
+const TRACK = 'relative mt-[0.15rem] h-1 basis-full overflow-hidden rounded-full bg-surface-3'
+const TRACK_PACE = 'absolute -top-0.5 -bottom-0.5 w-[2px] bg-text-dim'
+const TRACK_BAR = 'absolute inset-y-0 left-0 rounded-full'
+
 const BAR_CLASS: Record<RowTone, string> = {
-  plain: 'track__bar',
-  good: 'track__bar track__bar--pos',
-  over: 'track__bar track__bar--over',
-  'pacing-over': 'track__bar track__bar--pacing-over',
+  plain: `${TRACK_BAR} bg-accent-blue`,
+  good: `${TRACK_BAR} bg-pos`,
+  over: `${TRACK_BAR} bg-neg`,
+  'pacing-over': `${TRACK_BAR} bg-warn`,
 }
 
+const DELTA = 'font-mono font-semibold'
 const DELTA_CLASS: Record<RowTone, string> = {
-  plain: 'row__delta',
-  good: 'row__delta row__delta--under',
-  over: 'row__delta row__delta--over',
-  'pacing-over': 'row__delta row__delta--pace',
+  plain: DELTA,
+  good: `${DELTA} text-pos`,
+  over: `${DELTA} text-neg`,
+  'pacing-over': `${DELTA} text-warn`,
 }
 
 /**
@@ -77,11 +99,6 @@ const DELTA_CLASS: Record<RowTone, string> = {
 function widthPercent(actualCents: number, plannedCents: number): number {
   if (plannedCents <= 0) return 0
   return Math.max(0, Math.min(100, Math.round((actualCents / plannedCents) * 100)))
-}
-
-/** `2026-08-17` as `17/08`, which is how a statement is read. */
-function shortDate(date: string): string {
-  return `${date.slice(8, 10)}/${date.slice(5, 7)}`
 }
 
 /**
@@ -103,26 +120,27 @@ function RowTransactions({
 
   return (
     <>
-      <ul className="mt-2 flex flex-col divide-y divide-border rounded-lg border border-border bg-surface-2">
+      {/* No bordered panel around the list: the row it opens under already
+          frames it, and a second box inside the first is the nesting that made
+          this screen read as boxes within boxes. Just hairlines between the
+          charges, inset a little so they still read as belonging to the row. */}
+      <ul className="flex flex-col divide-y divide-border/60 border-t border-border/60 pb-1 pl-6 pr-3">
         {transactions.map((transaction) => (
           <li
             key={transaction.id}
-            className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5"
+            className="flex flex-wrap items-start gap-x-3 gap-y-1.5 py-2.5"
           >
-            <span className="font-mono text-xs tabular-nums text-muted-foreground">
-              {shortDate(transaction.date)}
-            </span>
-            <div className="min-w-0 flex-1 basis-48">
-              <div className="truncate text-sm">{transaction.description}</div>
-              <div className="truncate text-xs text-text-faint">
-                {transaction.accountName}
-                {transaction.last4 ? ` ···· ${transaction.last4}` : null}
-                {/* Which instalment of which, because "R$ 1.147,09" repeated
-                    across ten months is otherwise unexplainable. */}
-                {transaction.installment ? ` · parcela ${transaction.installment}` : null}
-              </div>
-            </div>
-            <span className="font-mono text-xs tabular-nums">{brl(transaction.amountCents)}</span>
+            {/* The row shows what identifies the charge at a glance and opens to
+                its full record on tap -- the long account name, the bank, and
+                the instalment position are details reached for deliberately,
+                not width spent on every row. The full merchant name never
+                truncates: it is the one thing here nobody can reconstruct. */}
+            <TransactionDetail
+              transaction={transaction}
+              categoryName={
+                categories.find((category) => category.id === transaction.categoryId)?.name ?? null
+              }
+            />
             {/* Fixing it here, where the mistake is visible. Sending someone
                 to another screen to correct one charge is how a wrong category
                 stays wrong.
@@ -173,9 +191,9 @@ function Row({
       {/* A row with nothing behind it is not openable: an empty panel under a
           R$ 0,00 line answers a question nobody asked. */}
       {row.transactionCount === 0 ? (
-        <div className="row">
-        <span className="row__name">{row.categoryName}</span>
-        <span className="row__amounts">
+        <div className={ROW}>
+        <span className={ROW_NAME}>{row.categoryName}</span>
+        <span className={ROW_AMOUNTS}>
           {brl(row.actualCents)}
           <PlanEditor categoryId={row.categoryId} period={period} plannedCents={planned} />
         </span>
@@ -184,7 +202,7 @@ function Row({
             row with NO plan has nothing to be a fraction of, so it draws no
             track at all -- a 0% bar would collapse the two into one picture. */}
         {planned === null ? null : (
-          <span className="track">
+          <span className={TRACK}>
             <span
               className={BAR_CLASS[tone]}
               style={{ width: `${widthPercent(row.actualCents, planned)}%` }}
@@ -193,7 +211,7 @@ function Row({
                 running and only when it lands inside the track. */}
             {stance === 'CURRENT' && row.paceCents > row.actualCents ? (
               <span
-                className="track__pace"
+                className={TRACK_PACE}
                 style={{ left: `${widthPercent(row.paceCents, planned)}%` }}
                 title={`Projeção: ${brl(row.paceCents)}`}
               />
@@ -201,7 +219,7 @@ function Row({
           </span>
         )}
 
-        <span className="row__meta">
+        <span className={ROW_META}>
           {delta !== null && delta !== 0 ? (
             <span className={DELTA_CLASS[tone]}>{brlSigned(delta)}</span>
           ) : null}
@@ -219,10 +237,10 @@ function Row({
         </span>
       </div>
       ) : (
-        <details className="row-detail">
-          <summary className="row">
-            <span className="row__name">{row.categoryName}</span>
-            <span className="row__amounts">
+        <details className="group open:bg-surface-2">
+          <summary className={ROW_SUMMARY}>
+            <span className={ROW_NAME_CARET}>{row.categoryName}</span>
+            <span className={ROW_AMOUNTS}>
               {brl(row.actualCents)}
               <PlanEditor categoryId={row.categoryId} period={period} plannedCents={planned} />
             </span>
@@ -231,7 +249,7 @@ function Row({
                 row with NO plan has nothing to be a fraction of, so it draws no
                 track at all -- a 0% bar would collapse the two into one picture. */}
             {planned === null ? null : (
-              <span className="track">
+              <span className={TRACK}>
                 <span
                   className={BAR_CLASS[tone]}
                   style={{ width: `${widthPercent(row.actualCents, planned)}%` }}
@@ -240,7 +258,7 @@ function Row({
                     running and only when it lands inside the track. */}
                 {stance === 'CURRENT' && row.paceCents > row.actualCents ? (
                   <span
-                    className="track__pace"
+                    className={TRACK_PACE}
                     style={{ left: `${widthPercent(row.paceCents, planned)}%` }}
                     title={`Projeção: ${brl(row.paceCents)}`}
                   />
@@ -248,7 +266,7 @@ function Row({
               </span>
             )}
 
-            <span className="row__meta">
+            <span className={ROW_META}>
               {delta !== null && delta !== 0 ? (
                 <span className={DELTA_CLASS[tone]}>{brlSigned(delta)}</span>
               ) : null}
@@ -306,7 +324,7 @@ export function MonthBlock({
 
   return (
     <Card className="overflow-hidden rounded-xl">
-      <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-border bg-surface-2/40 px-4 py-3">
+      <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-border bg-surface-2/40 px-3 py-3">
         <h2 className="flex items-center gap-2 text-base font-semibold">
           <span
             className={`size-2 rounded-full ${DOT_CLASS[group.group] ?? 'bg-muted-foreground'}`}
@@ -323,7 +341,7 @@ export function MonthBlock({
           ) : null}
         </div>
       </header>
-      <ul className="block__rows px-4 py-2">
+      <ul className="list-none divide-y divide-border">
         {group.rows.map((row) => (
           <Row
             key={row.categoryId}
@@ -342,15 +360,15 @@ export function MonthBlock({
                 asked. No track and no plan: none of these buckets is a
                 category, so there is nothing to budget them against. */}
             {item.transactionCount === 0 ? (
-              <div className="row">
-                <span className="row__name">{item.label}</span>
-                <span className="row__amounts">{brl(item.amountCents)}</span>
+              <div className={ROW}>
+                <span className={ROW_NAME}>{item.label}</span>
+                <span className={ROW_AMOUNTS}>{brl(item.amountCents)}</span>
               </div>
             ) : (
-              <details className="row-detail">
-                <summary className="row">
-                  <span className="row__name">{item.label}</span>
-                  <span className="row__amounts">{brl(item.amountCents)}</span>
+              <details className="group open:bg-surface-2">
+                <summary className={ROW_SUMMARY}>
+                  <span className={ROW_NAME_CARET}>{item.label}</span>
+                  <span className={ROW_AMOUNTS}>{brl(item.amountCents)}</span>
                 </summary>
                 <RowTransactions
                   transactions={item.transactions}

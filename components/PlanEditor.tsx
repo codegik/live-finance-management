@@ -69,11 +69,13 @@ export function PlanEditor({
     return (
       <button
         type="button"
-        className={
-          plannedCents === null
-            ? 'row__planned row__planned--edit row__planned--unset'
-            : 'row__planned row__planned--edit'
-        }
+        // A plan figure that reads as text until you go to change it: the base
+        // <button> chrome is stripped (appearance/border/padding/background) and
+        // it matches the spent figure beside it (mono, same size and weight) so
+        // the two read as one "spent / planned" line. Italic when unset.
+        className={`inline cursor-text appearance-none border-0 bg-transparent p-0 font-mono text-[0.875rem] font-medium text-text-faint hover:text-foreground hover:underline hover:[text-underline-offset:2px] focus-visible:text-foreground focus-visible:underline focus-visible:[text-underline-offset:2px] ${
+          plannedCents === null ? 'italic' : ''
+        }`}
         onClick={open}
         aria-label={plannedCents === null ? 'Definir um plano para esta categoria' : 'Editar o plano'}
         title={plannedCents === null ? 'Sem plano — clique para definir' : 'Editar o plano'}
@@ -84,10 +86,15 @@ export function PlanEditor({
             aria-hidden="true"
           />
         ) : (
-          ` / ${brl(plannedCents)}`
+          // Non-breaking spaces, not plain ones: this button is inline-block,
+          // so a leading normal space is trimmed away while the one after the
+          // slash survives -- which is what made "R$ 4.601,05/ R$ 5.000,00"
+          // sit lopsided against its slash. A NBSP is a real character and is
+          // kept, so the separator reads evenly on both sides.
+          ` / ${brl(plannedCents)}`
         )}
         {state.error ? (
-          <span role="alert" className="form__error">
+          <span role="alert" className="text-[0.82rem] text-neg">
             {' '}
             {state.error}
           </span>
@@ -100,7 +107,7 @@ export function PlanEditor({
     <form
       ref={formRef}
       action={formAction}
-      className="row__plan-edit"
+      className="inline"
       // Keep a click on the field from toggling the <details> around it.
       onClick={(event) => event.preventDefault()}
     >
@@ -114,7 +121,7 @@ export function PlanEditor({
         defaultValue={original}
         placeholder="sem plano"
         aria-label="Plano desta categoria"
-        className="row__plan-input"
+        className="w-[6.5rem] rounded-[4px] border border-border bg-surface-2 px-[0.35rem] py-[0.05rem] text-right font-mono text-[0.875rem] text-foreground focus:border-accent-blue focus:outline-none"
         onBlur={commit}
         onKeyDown={(event) => {
           if (event.key === 'Enter') {

@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { brl, brlCompact, brlSigned, monthLabel, monthShort } from '@/lib/format'
+import { accountLabel, brl, brlCompact, brlSigned, monthLabel, monthShort } from '@/lib/format'
 
 it('never prints minus zero', () => {
   // Intl.NumberFormat renders -0 as "-R$ 0,00", and a subtraction landing on
@@ -24,4 +24,20 @@ it('shows an empty grid cell as empty rather than as a zero', () => {
 it('always carries the sign on a difference against a plan', () => {
   expect(brlSigned(10_000).startsWith('+')).toBe(true)
   expect(brlSigned(-10_000).startsWith('−')).toBe(true)
+})
+
+it('names a card by its digits and never by its marketing name', () => {
+  // "LATAM PASS ITAU MASTERCARD BLACK" is the account name, but on a phone row
+  // the four digits are what tell one card from another.
+  expect(accountLabel({ type: 'CREDIT', institution: 'Itaú', last4: '1885' })).toBe(
+    'Cartão ···· 1885',
+  )
+  expect(accountLabel({ type: 'CREDIT', institution: 'Itaú', last4: null })).toBe('Cartão')
+})
+
+it('names a bank by its first word only, so a long name still fits', () => {
+  expect(accountLabel({ type: 'BANK', institution: 'Banco do Brasil', last4: '0001' })).toBe(
+    'Banco ···· 0001',
+  )
+  expect(accountLabel({ type: 'BANK', institution: 'Sicredi', last4: null })).toBe('Sicredi')
 })

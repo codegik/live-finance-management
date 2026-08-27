@@ -16,7 +16,7 @@ export function JoinForm({ token }: { token: string }) {
         <input name="password" type="password" required minLength={8} autoComplete="new-password" />
       </label>
       {state.error ? (
-        <p role="alert" className="form__error">
+        <p role="alert" className="text-[0.82rem] text-neg">
           {state.error}
         </p>
       ) : null}

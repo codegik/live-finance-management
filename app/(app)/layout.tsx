@@ -22,9 +22,9 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     .catch(() => 0)
 
   return (
-    <div className="shell">
+    <div className="grid min-h-[100dvh] grid-cols-1 min-[52rem]:grid-cols-[15rem_1fr]">
       <AppNav uncategorizedCount={uncategorizedCount} />
-      <div className="content">{children}</div>
+      <div className="min-w-0">{children}</div>
     </div>
   )
 }
