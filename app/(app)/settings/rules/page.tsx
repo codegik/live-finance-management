@@ -4,30 +4,12 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { listCategories } from '@/lib/db/categories'
 import { getDb } from '@/lib/db/client'
-import { type ConnectionDetail, listConnectionDetails } from '@/lib/db/connections'
+import { listConnectionDetails } from '@/lib/db/connections'
 import { listRules } from '@/lib/db/rules'
+import { bankOptions } from '@/lib/views/bank-options'
 import { CreateRuleForm, DeleteRuleForm } from './RuleForms'
 
 export const dynamic = 'force-dynamic'
-
-/**
- * The picker names each bank by its account(s), not by `institution`: that
- * column holds Pluggy's connector label ("MeuPluggy" for every sandbox item),
- * which does not tell one bank from another. The account name is the real
- * bank/account name the household recognizes. Institution is only a fallback
- * for a connection with no accounts yet, and a short id fragment breaks any
- * remaining tie so every option stays distinct.
- */
-function bankOptions(connections: ConnectionDetail[]): { id: string; label: string }[] {
-  const seen = new Set<string>()
-  return connections.map((c) => {
-    const names = c.accounts.map((a) => a.name).join(', ')
-    let label = names || c.institution
-    if (seen.has(label)) label = `${label} (${c.id.slice(0, 4)})`
-    seen.add(label)
-    return { id: c.id, label }
-  })
-}
 
 export default async function RulesSettingsPage() {
   const session = await requireSession().catch(toSignInOrThrow)

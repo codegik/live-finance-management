@@ -1,3 +1,4 @@
+import { RuleFromTransaction } from '@/app/(app)/settings/rules/RuleForms'
 import { PlanEditor } from '@/components/PlanEditor'
 import { TransactionCategoryPicker } from '@/components/TransactionCategoryPicker'
 import { TransactionDetail } from '@/components/TransactionDetail'
@@ -128,7 +129,7 @@ function RowTransactions({
         {transactions.map((transaction) => (
           <li
             key={transaction.id}
-            className="flex flex-wrap items-start gap-x-3 gap-y-1.5 py-2.5"
+            className="flex flex-wrap items-start gap-x-3 gap-y-2 py-2.5"
           >
             {/* The row shows what identifies the charge at a glance and opens to
                 its full record on tap -- the long account name, the bank, and
@@ -141,24 +142,30 @@ function RowTransactions({
                 categories.find((category) => category.id === transaction.categoryId)?.name ?? null
               }
             />
-            {/* Fixing it here, where the mistake is visible. Sending someone
-                to another screen to correct one charge is how a wrong category
-                stays wrong.
+            {/* One connected action cluster, not two loose pills: the category
+                chip and the "make this a rule" glyph belong to the same row and
+                sit together. Both fix a miscategorised charge where it is seen,
+                one for this charge, one for the whole merchant.
 
-                Per transaction, not per list. Under a category row the two are
-                the same value by construction, but the "Não categorizado" and
-                "Categorias arquivadas" buckets are defined by NOT matching any
-                drawn row, so their lists have no single category to preselect:
-                null there is the truth, and the picker turns it into a
-                disabled "A categorizar" placeholder. Preselecting whatever
-                sorts first instead would show an unfiled charge as already
-                filed -- and one careless click would then file it there. */}
-            <TransactionCategoryPicker
-              key={transaction.id}
-              transactionId={transaction.id}
-              categoryId={transaction.categoryId}
-              categories={categories}
-            />
+                Category is per transaction, not per list: the "Não
+                categorizado" and "Categorias arquivadas" buckets are defined by
+                NOT matching any drawn row, so their lists have no single
+                category to preselect -- null there is the truth, which the
+                picker turns into a disabled "A categorizar" placeholder. */}
+            <div className="flex items-center gap-1.5">
+              <TransactionCategoryPicker
+                key={transaction.id}
+                transactionId={transaction.id}
+                categoryId={transaction.categoryId}
+                categories={categories}
+                compact
+              />
+              <RuleFromTransaction
+                merchant={transaction.merchantNormalized}
+                categoryId={transaction.categoryId}
+                categories={categories}
+              />
+            </div>
           </li>
         ))}
       </ul>

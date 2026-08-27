@@ -1,11 +1,12 @@
-import { and, asc, eq } from 'drizzle-orm'
+import { and, asc, count, desc, eq, like } from 'drizzle-orm'
 import { normalizeMerchant } from '@/lib/domain/categorize'
 import { normalizedSeedRules } from '@/lib/domain/seed-rules'
 import { recategorize } from '@/lib/sync/categorize'
 import { categoryBelongsToHousehold } from './categories'
 import { connectionBelongsToHousehold } from './connections'
 import type { Db, Executor } from './client'
-import { categories, connections, merchantRules } from './schema'
+import { escapeLike } from './like'
+import { accounts, categories, connections, merchantRules, transactions } from './schema'
 
 /** Inbox-created rules match one exact merchant, so they win by default. */
 export const DEFAULT_EXACT_PRIORITY = 100
@@ -49,6 +50,86 @@ export async function listRules(exec: Executor, householdId: string): Promise<Ru
     connectionId: rule.connectionId,
     institution,
   }))
+}
+
+export type RulePreviewItem = {
+  id: string
+  date: string
+  description: string
+  amountCents: number
+  institution: string
+  /** The category the transaction sits in now, before the rule is saved. */
+  categoryName: string | null
+}
+
+export type RulePreviewMatch = {
+  matchType: 'EXACT' | 'CONTAINS'
+  pattern: string
+  /** Bank scope. Null/undefined previews across every bank. */
+  connectionId?: string | null
+}
+
+/**
+ * The transactions a rule WOULD catch, for the live preview under the form --
+ * so the household sees the blast radius before saving, not the "14
+ * recategorized" count after.
+ *
+ * It matches merchant_normalized exactly the way recategorize() does (same
+ * normalize, same EXACT/CONTAINS split, same optional bank scope), so the
+ * preview cannot promise a match the save would then miss. It deliberately
+ * does NOT exclude already-categorized or MANUAL rows: the question the panel
+ * answers is "which transactions does this pattern name", and a row already in
+ * the right category is still one the household wants to see it caught. The
+ * current category rides along so an about-to-change row is visible as such.
+ */
+export async function previewRuleMatches(
+  exec: Executor,
+  householdId: string,
+  match: RulePreviewMatch,
+  limit = 8,
+): Promise<{ total: number; items: RulePreviewItem[] }> {
+  // Same normalization the stored pattern gets: an un-normalized needle would
+  // never match the normalized merchant column. A pattern that normalizes to
+  // nothing (punctuation only) matches nothing, exactly as createRule rejects.
+  const pattern = normalizeMerchant(match.pattern)
+  if (!pattern) return { total: 0, items: [] }
+
+  const where = and(
+    eq(connections.householdId, householdId),
+    match.matchType === 'EXACT'
+      ? eq(transactions.merchantNormalized, pattern)
+      : like(transactions.merchantNormalized, `%${escapeLike(pattern)}%`),
+    // A falsy connectionId is "any bank"; only a real one narrows the scope.
+    ...(match.connectionId ? [eq(accounts.connectionId, match.connectionId)] : []),
+  )
+
+  const [countRow] = await exec
+    .select({ value: count() })
+    .from(transactions)
+    .innerJoin(accounts, eq(transactions.accountId, accounts.id))
+    .innerJoin(connections, eq(accounts.connectionId, connections.id))
+    .where(where)
+
+  const items = await exec
+    .select({
+      id: transactions.id,
+      date: transactions.date,
+      description: transactions.description,
+      amountCents: transactions.amountCents,
+      institution: connections.institution,
+      categoryName: categories.name,
+    })
+    .from(transactions)
+    .innerJoin(accounts, eq(transactions.accountId, accounts.id))
+    .innerJoin(connections, eq(accounts.connectionId, connections.id))
+    // Left, not inner: an uncategorized match must still appear -- those are
+    // the very rows a rule most often exists to file.
+    .leftJoin(categories, eq(transactions.categoryId, categories.id))
+    .where(where)
+    .orderBy(desc(transactions.date), desc(transactions.id))
+    .limit(limit)
+
+  return { total: countRow?.value ?? 0, items }
 }
 
 export type CreateRuleInput = {

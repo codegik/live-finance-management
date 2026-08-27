@@ -74,7 +74,11 @@ export function TransactionDetail({
         // own line below. From sm up it shares the row with the chip again.
         // items-baseline keeps the date and amount on the name's first line
         // rather than floating in the middle of a tall, wrapped name.
-        className="-mx-1 flex min-w-0 basis-full items-baseline gap-x-3 rounded-md px-1 py-0.5 text-left transition-colors hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background sm:flex-1 sm:basis-0"
+        // border-0 bg-transparent: this is a raw <button>, and without them the
+        // base `button` rule in globals.css paints a filled, bordered slab
+        // around every transaction -- the "ugly box". At rest it is just the
+        // line; the hover tint is the only chrome.
+        className="-mx-1 flex min-w-0 basis-full items-baseline gap-x-3 rounded-md border-0 bg-transparent px-1 py-0.5 text-left transition-colors hover:bg-surface-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background sm:flex-1 sm:basis-0"
       >
         <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
           {shortDate(transaction.date)}

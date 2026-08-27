@@ -43,11 +43,21 @@ export function TransactionCategoryPicker({
   categoryId,
   categoryName,
   categories,
+  compact = false,
 }: {
   transactionId: string
   categoryId: string | null
   categoryName?: string | null
   categories: { id: string; name: string }[]
+  /**
+   * Icon-only resting state, no category name. For the month view, where every
+   * row already sits under its category's own heading, so repeating the name on
+   * each chip is noise -- it becomes one small glyph that matches the "create
+   * rule" wand beside it. The name still rides on aria-label/title, and the
+   * amber warning glyph still marks an uncategorized row. The ledger, which
+   * does NOT group by category, leaves this off and keeps the label.
+   */
+  compact?: boolean
 }) {
   const [state, formAction, pending] = useActionState(setTransactionCategoryAction, INITIAL)
   const [editing, setEditing] = useState(false)
@@ -69,6 +79,32 @@ export function TransactionCategoryPicker({
   }, [editing])
 
   if (!editing) {
+    const Icon = unset ? TriangleAlert : Tag
+
+    // Icon-only: a size-7 ghost button that matches the "create rule" wand, so
+    // the two sit together as a pair. The name lives on title/aria-label.
+    if (compact) {
+      return (
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          aria-label={`Categoria: ${label}. Clique para alterar.`}
+          title={label}
+          className={cn(
+            // A clean ghost glyph matching the "create rule" icon beside it, so
+            // the two read as a pair. border-0 keeps the base button slab out.
+            'inline-flex size-7 shrink-0 items-center justify-center rounded-md border-0 bg-transparent transition-colors',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background',
+            unset
+              ? 'text-warn hover:bg-warn-dim/40'
+              : 'text-muted-foreground hover:bg-surface-3 hover:text-foreground',
+          )}
+        >
+          <Icon className="size-4 shrink-0" />
+        </button>
+      )
+    }
+
     return (
       <button
         type="button"
@@ -83,11 +119,7 @@ export function TransactionCategoryPicker({
             : 'border-border bg-surface-2 text-muted-foreground hover:bg-surface-3 hover:text-foreground',
         )}
       >
-        {unset ? (
-          <TriangleAlert className="size-3.5 shrink-0" />
-        ) : (
-          <Tag className="size-3.5 shrink-0" />
-        )}
+        <Icon className="size-3.5 shrink-0" />
         <span className="truncate">{label}</span>
       </button>
     )

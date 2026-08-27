@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, ilike, inArray, isNull, lte, or } from 'drizzle-orm'
+import { and, count, desc, eq, gte, ilike, inArray, isNull, lte, or, type SQL, sql } from 'drizzle-orm'
 import { type BudgetRole, resolveBudgetRole } from '@/lib/domain/budget-role'
 import { categoryBelongsToHousehold } from './categories'
 import type { Db, Executor } from './client'
@@ -26,11 +26,20 @@ export type TransactionRow = {
   ownerUserId: string
 }
 
-export async function listTransactions(
-  db: Db,
-  householdId: string,
-  opts: { from?: string; to?: string; includeExcluded?: boolean; search?: string | null } = {},
-): Promise<TransactionRow[]> {
+type ListOpts = {
+  from?: string
+  to?: string
+  includeExcluded?: boolean
+  search?: string | null
+}
+
+/**
+ * The WHERE for a household's transactions, shared by listTransactions and
+ * countTransactions so a paginated page and its total can never disagree about
+ * which rows are in scope. Every filter here references only transactions and
+ * connections columns, so both callers can build the same joins around it.
+ */
+function transactionFilters(householdId: string, opts: ListOpts): SQL[] {
   const filters = [eq(connections.householdId, householdId)]
   if (opts.from) filters.push(gte(transactions.date, opts.from))
   if (opts.to) filters.push(lte(transactions.date, opts.to))
@@ -63,7 +72,17 @@ export async function listTransactions(
     if (anyColumn) filters.push(anyColumn)
   }
 
-  const rows = await db
+  return filters
+}
+
+export async function listTransactions(
+  db: Db,
+  householdId: string,
+  opts: ListOpts & { limit?: number; offset?: number } = {},
+): Promise<TransactionRow[]> {
+  const filters = transactionFilters(householdId, opts)
+
+  const query = db
     .select({ transaction: transactions, account: accounts, connection: connections, category: categories })
     .from(transactions)
     .innerJoin(accounts, eq(transactions.accountId, accounts.id))
@@ -75,7 +94,16 @@ export async function listTransactions(
     // createdAt alone doesn't break ties deterministically: every row from a
     // single sync gets a near-identical defaultNow() timestamp, so same-day
     // rows could reorder between calls. id is a stable, unique tiebreaker.
+    // The same three keys order both the page and the count's OFFSET, so a row
+    // can never fall between two pages or be served on both.
     .orderBy(desc(transactions.date), desc(transactions.createdAt), desc(transactions.id))
+    .$dynamic()
+
+  // limit/offset are opt-in: an unpaginated caller (the month and year views)
+  // still gets every matching row, exactly as before.
+  const rows = await (opts.limit === undefined
+    ? query
+    : query.limit(opts.limit).offset(opts.offset ?? 0))
 
   return rows.map(({ transaction, account, connection, category }) => ({
     id: transaction.id,
@@ -97,6 +125,38 @@ export async function listTransactions(
     institution: connection.institution,
     ownerUserId: connection.ownerUserId,
   }))
+}
+
+/**
+ * How many transactions match the same filters listTransactions would page
+ * over, and their summed amount. The count is what lets the ledger say "página
+ * 2 de 9" and size its next button honestly; the sum is the grand total the
+ * search summary shows, which before pagination was got by adding up every
+ * loaded row and now has to be asked for directly. Both share
+ * transactionFilters with the list, so the totals and the pages can never
+ * describe different sets of rows.
+ */
+export async function aggregateTransactions(
+  db: Db,
+  householdId: string,
+  opts: ListOpts = {},
+): Promise<{ count: number; totalCents: number }> {
+  const filters = transactionFilters(householdId, opts)
+
+  const [row] = await db
+    .select({
+      count: count(),
+      // coalesce: sum() over zero matching rows is SQL NULL, not 0. Number()
+      // because Postgres returns the sum as a string -- safe here, amounts are
+      // cents and a household's statement never nears 2^53 of them.
+      totalCents: sql<number>`coalesce(sum(${transactions.amountCents}), 0)::bigint`.mapWith(Number),
+    })
+    .from(transactions)
+    .innerJoin(accounts, eq(transactions.accountId, accounts.id))
+    .innerJoin(connections, eq(accounts.connectionId, connections.id))
+    .where(and(...filters))
+
+  return { count: row?.count ?? 0, totalCents: row?.totalCents ?? 0 }
 }
 
 /** Transaction ids belonging to a household, as a subquery for scoped writes. */

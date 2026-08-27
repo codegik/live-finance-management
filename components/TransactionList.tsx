@@ -1,3 +1,4 @@
+import { RuleFromTransaction } from '@/app/(app)/settings/rules/RuleForms'
 import { TransactionCategoryPicker } from '@/components/TransactionCategoryPicker'
 import { brl } from '@/lib/format'
 import type { LedgerDay } from '@/lib/views/ledger'
@@ -61,13 +62,23 @@ export function TransactionList({
                     charge is spotted while reading the statement, and that is
                     the moment to fix it -- the same picker the month view
                     uses, so there is one way to do this in the app. */}
-                <TransactionCategoryPicker
-                  key={item.id}
-                  transactionId={item.id}
-                  categoryId={item.categoryId}
-                  categoryName={item.categoryName}
-                  categories={categories}
-                />
+                {/* One connected action cluster: correct this charge's category,
+                    or (the wand) promote the whole merchant into a rule without
+                    leaving the statement. */}
+                <div className="flex items-center gap-1.5">
+                  <TransactionCategoryPicker
+                    key={item.id}
+                    transactionId={item.id}
+                    categoryId={item.categoryId}
+                    categoryName={item.categoryName}
+                    categories={categories}
+                  />
+                  <RuleFromTransaction
+                    merchant={item.merchantNormalized}
+                    categoryId={item.categoryId}
+                    categories={categories}
+                  />
+                </div>
                 <span className="ml-auto shrink-0 font-mono text-sm tabular-nums">
                   {brl(item.amountCents)}
                 </span>

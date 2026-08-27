@@ -40,6 +40,12 @@ export type MonthTransaction = {
   /** Signed the same way the row is: bigger means more. */
   amountCents: number
   description: string
+  /**
+   * The noise-stripped merchant the rule engine matches on, or null when the
+   * descriptor normalizes to nothing. Prefills the pattern when a rule is
+   * created from this row, so the seed matches what the rule would then catch.
+   */
+  merchantNormalized: string | null
   accountName: string
   /** Which bank this account is at, for the compact bank label. */
   institution: string
@@ -201,6 +207,7 @@ export async function getMonthView(
         date: transactions.date,
         amountCents: transactions.amountCents,
         description: transactions.description,
+        merchantNormalized: transactions.merchantNormalized,
         installmentNumber: transactions.installmentNumber,
         installmentTotal: transactions.installmentTotal,
         accountName: accounts.name,
@@ -244,6 +251,7 @@ export async function getMonthView(
     amountCents:
       row.budgetRole === 'INCOME' ? toActualCents(row.amountCents, 'RECEITA') : row.amountCents,
     description: row.description,
+    merchantNormalized: row.merchantNormalized,
     accountName: row.accountName,
     institution: row.institution,
     accountType: row.accountType,
