@@ -6,7 +6,7 @@ Three services in one Railway project, all from this repo:
 | --- | --- | --- |
 | **web** | the Next.js app | the image default (`node server.js`) |
 | **Postgres** | Railway's Postgres plugin | — |
-| **reconcile** | the nightly sync, cron-scheduled | `node reconcile-job.mjs` |
+| **reconcile** | the twice-daily sync, cron-scheduled | `node reconcile-job.mjs` |
 
 Both application services run the **same image**, built from the `Dockerfile`, and differ
 only in the command they run.
@@ -82,7 +82,7 @@ variables so both services read one definition instead of drifting apart.
 Create a **second service** from the same repo:
 
 - Start command: `node reconcile-job.mjs`
-- Settings → **Cron Schedule**: `0 6 * * *`
+- Settings → **Cron Schedule**: `0 6,18 * * *`
 
 Railway runs a cron service by executing its start command on schedule and expects the
 process to exit. The job does exactly that: it calls `reconcileAll` directly,
@@ -91,7 +91,7 @@ broken card shows as a failed run rather than a green one with bad news in the l
 
 Two details worth knowing:
 
-- **Schedules are UTC.** `0 6 * * *` is 03:00 in São Paulo, which is what the app wants.
+- **Schedules are UTC.** `0 6,18 * * *` runs at 03:00 and 15:00 in São Paulo, twice a day.
 - **Railway skips a run if the previous one is still going**, so a slow reconcile cannot
   pile up on itself.
 
