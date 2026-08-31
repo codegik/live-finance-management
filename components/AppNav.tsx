@@ -41,6 +41,7 @@ const SECTIONS: { title: string; items: Item[] }[] = [
       { href: '/settings/connections', label: 'Conexões' },
       { href: '/settings/categories', label: 'Categorias' },
       { href: '/settings/rules', label: 'Regras' },
+      { href: '/settings/members', label: 'Membros' },
     ],
   },
 ]

@@ -1,8 +1,24 @@
-import { count, eq, sql } from 'drizzle-orm'
+import { asc, count, eq, sql } from 'drizzle-orm'
 import { hashPassword } from '../auth/password'
 import { seedCategories } from './categories'
 import type { Db } from './client'
 import { households, users, type User } from './schema'
+
+export type Member = { id: string; email: string; name: string; createdAt: Date }
+
+/** Everyone who belongs to the household, oldest first (the household's owner). */
+export async function listMembers(db: Db, householdId: string): Promise<Member[]> {
+  return db
+    .select({
+      id: users.id,
+      email: users.email,
+      name: users.name,
+      createdAt: users.createdAt,
+    })
+    .from(users)
+    .where(eq(users.householdId, householdId))
+    .orderBy(asc(users.createdAt))
+}
 
 /** Fixed key for the advisory lock guarding first-household creation. */
 const SETUP_LOCK_KEY = 4_120_251
