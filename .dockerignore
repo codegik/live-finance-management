@@ -30,3 +30,8 @@ seed.sh
 seed.ts
 demo.ts
 tools
+
+# Deploy tooling — Fly config and orchestration scripts never run in the image.
+fly
+deploy.sh
+promote.sh

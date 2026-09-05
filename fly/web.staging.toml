@@ -1,0 +1,40 @@
+# Fly config for the finance app (Next.js standalone server) — STAGING.
+#
+# A fully isolated copy of production: its own app and its own Postgres
+# (codegik-finance-db-staging). Reachable at
+# https://codegik-finance-staging.fly.dev (no custom domain — staging is
+# internal). Deploy from the repo ROOT via ./deploy.sh.
+#
+# Differs from web.toml only in the app name — the image and every behaviour are
+# identical, so what you validate here is what promote.sh ships to production.
+app = "codegik-finance-staging"
+primary_region = "gru"
+
+[build]
+  dockerfile = "../Dockerfile"
+
+[env]
+  NODE_ENV = "production"            # still a production build; only the env differs
+  PORT = "3000"
+  HOSTNAME = "0.0.0.0"
+
+[deploy]
+  release_command = "node migrate.mjs"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = "suspend"     # staging idles to save cost
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    method = "GET"
+    path = "/signin"
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

@@ -1,0 +1,5 @@
+# Real secret values live in per-env dotenv files, never committed.
+# The tracked template is .env.example; set-secrets.sh reads .env.<environment>.
+# (Root .gitignore already ignores .env.* everywhere; repeated here for clarity.)
+.env.production
+.env.staging

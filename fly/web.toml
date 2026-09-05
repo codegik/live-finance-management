@@ -1,0 +1,49 @@
+# Fly config for the finance app (Next.js standalone server) — PRODUCTION.
+#
+# One app, one image. The web machine runs the default CMD (`node server.js`);
+# the twice-... once-daily reconcile runs as a SEPARATE scheduled machine on the
+# same app, created by ./promote.sh (Fly cannot express a schedule in this file).
+#
+# Deploy from the repo ROOT so the Dockerfile's build context is the whole repo:
+#   fly deploy . -c fly/web.toml
+#
+# Secrets (DATABASE_URL, AUTH_SECRET, PLUGGY_*, CRON_SECRET, RESEND_API_KEY,
+# ALERT_EMAIL_FROM) are set with `fly secrets set` — see fly/set-secrets.sh and
+# fly/RUNBOOK.md — never committed here.
+app = "codegik-finance"
+primary_region = "gru"  # São Paulo — lowest latency for a pt-BR household
+
+[build]
+  # Resolved relative to THIS file (fly/); climb to the repo root, which is the
+  # build context passed on the command line (`fly deploy . -c fly/web.toml`).
+  dockerfile = "../Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "3000"
+  HOSTNAME = "0.0.0.0"
+
+# Applies pending Drizzle migrations in a one-off machine BEFORE the new version
+# serves traffic. Non-zero exit aborts the deploy, so a bad migration never puts
+# a container live against a mismatched schema. This replaces Railway's
+# preDeployCommand. It reads DATABASE_URL from the app's secrets.
+[deploy]
+  release_command = "node migrate.mjs"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = "suspend"     # idle to ~zero cost; suspend resumes fast
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    method = "GET"
+    path = "/signin"                 # renders for anyone; cheap liveness signal
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"                    # Next.js standalone server needs ~512MB

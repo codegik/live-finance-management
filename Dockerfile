@@ -1,6 +1,7 @@
-# Both Railway services run this same image and differ only in command:
-# the web service uses the default CMD, the reconcile service overrides it
-# with `node reconcile-job.mjs`.
+# One image, two entry points. The web machine uses the default CMD
+# (`node server.js`); the daily reconcile machine overrides it with
+# `node reconcile-job.mjs`. Migrations run separately as the Fly deploy
+# release_command (`node migrate.mjs`). See fly/RUNBOOK.md.
 
 FROM node:22-alpine AS base
 ENV PNPM_HOME=/pnpm PATH=/pnpm:$PATH NEXT_TELEMETRY_DISABLED=1
