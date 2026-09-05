@@ -1,6 +1,7 @@
 import type { Db } from '@/lib/db/client'
 import { getHouseholdHealth, type HouseholdHealth } from '@/lib/db/health'
 import { listHouseholdUsers } from '@/lib/db/households'
+import { listMerchantLabels, resolveLabel } from '@/lib/db/merchant-labels'
 import { aggregateTransactions, listTransactions } from '@/lib/db/transactions'
 import { countUncategorized } from '@/lib/views/inbox'
 
@@ -16,8 +17,12 @@ export const LEDGER_PAGE_SIZE = 50
 export type LedgerItem = {
   id: string
   description: string
+  /** The household's own name for this merchant, or null when none matches.
+   *  When set, the row shows this in place of the bank descriptor; the
+   *  descriptor is still carried in `description` for the detail sheet. */
+  label: string | null
   /** The normalized merchant the rule engine matches on, or null. Prefills the
-   *  pattern when a rule is created from this row. */
+   *  pattern when a rule or a label is created from this row. */
   merchantNormalized: string | null
   amountCents: number
   institution: string
@@ -100,7 +105,7 @@ export async function getLedgerView(
   const page = Number.isFinite(requested) ? Math.min(Math.max(requested, 1), pageCount) : 1
   const offset = (page - 1) * pageSize
 
-  const [rows, members, health, uncategorizedCount] = await Promise.all([
+  const [rows, members, health, uncategorizedCount, labels] = await Promise.all([
     listTransactions(db, householdId, { ...filter, limit: pageSize, offset }),
     listHouseholdUsers(db, householdId),
     getHouseholdHealth(db, householdId, opts),
@@ -109,6 +114,7 @@ export async function getLedgerView(
     // the household, not about the current filter. Narrowing it would make
     // the backlog appear to shrink as someone typed.
     countUncategorized(db, householdId),
+    listMerchantLabels(db, householdId),
   ])
 
   const nameByUserId = new Map(members.map((m) => [m.id, m.name]))
@@ -126,6 +132,7 @@ export async function getLedgerView(
     day.items.push({
       id: row.id,
       description: row.description,
+      label: resolveLabel(labels, row.merchantNormalized),
       merchantNormalized: row.merchantNormalized,
       amountCents: row.amountCents,
       institution: row.institution,

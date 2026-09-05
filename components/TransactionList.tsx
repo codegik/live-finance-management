@@ -1,4 +1,5 @@
 import { RuleFromTransaction } from '@/app/(app)/settings/rules/RuleForms'
+import { MerchantLabelButton } from '@/components/MerchantLabelButton'
 import { TransactionCategoryPicker } from '@/components/TransactionCategoryPicker'
 import { brl } from '@/lib/format'
 import type { LedgerDay } from '@/lib/views/ledger'
@@ -49,7 +50,15 @@ export function TransactionList({
               >
                 <div className="flex min-w-0 flex-[2] basis-56 flex-col">
                   <span className="flex items-center gap-1.5">
-                    <span className="truncate text-sm font-medium">{item.description}</span>
+                    {/* The household's own name when one matches, the bank
+                        descriptor otherwise. title carries the original so it is
+                        still reachable here, where there is no detail sheet. */}
+                    <span
+                      className="truncate text-sm font-medium"
+                      title={item.label ? item.description : undefined}
+                    >
+                      {item.label ?? item.description}
+                    </span>
                     {/* A pending charge counts in the day total like any other;
                         the chip only flags that the bank has not settled it. */}
                     {item.pending ? (
@@ -81,6 +90,10 @@ export function TransactionList({
                     categoryId={item.categoryId}
                     categoryName={item.categoryName}
                     categories={categories}
+                  />
+                  <MerchantLabelButton
+                    merchant={item.merchantNormalized}
+                    currentLabel={item.label}
                   />
                   <RuleFromTransaction
                     merchant={item.merchantNormalized}

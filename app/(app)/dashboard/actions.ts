@@ -5,17 +5,23 @@ import { z } from 'zod'
 import { requireSession } from '@/lib/auth/session'
 import { clearBudget, setBudget } from '@/lib/db/budgets'
 import { getDb } from '@/lib/db/client'
+import { clearMerchantLabel, setMerchantLabel } from '@/lib/db/merchant-labels'
 import { setTransactionCategory } from '@/lib/db/transactions'
 import { parseReais } from '@/lib/domain/parse-reais'
 import {
+  EMPTY_LABEL_ERROR,
   INVALID_AMOUNT_ERROR,
   INVALID_PERIOD_ERROR,
+  LABEL_CLEARED_MESSAGE,
+  LABEL_SAVED_MESSAGE,
+  type MerchantLabelState,
   MOVED_MESSAGE,
   PLAN_CLEARED_MESSAGE,
   PLAN_SAVED_MESSAGE,
   type PlanState,
   type RecategorizeState,
   UNKNOWN_CATEGORY_ERROR,
+  UNKNOWN_MERCHANT_ERROR,
   UNKNOWN_TRANSACTION_ERROR,
 } from './state'
 
@@ -77,6 +83,76 @@ export async function setTransactionCategoryAction(
   revalidatePath('/inbox')
 
   return { error: null, message: MOVED_MESSAGE }
+}
+
+const matchType = z.enum(['EXACT', 'CONTAINS'])
+
+/**
+ * Sets (or replaces) the household's own name for a merchant, matched like a
+ * rule: an EXACT or CONTAINS pattern. Applies to every past and future charge
+ * whose normalized merchant matches -- the label is presentational only and
+ * never touches a category, role, or total. The pattern is normalized in the db
+ * layer, so what the household typed matches what the bank sent.
+ */
+export async function setMerchantLabelAction(
+  _prev: MerchantLabelState,
+  formData: FormData,
+): Promise<MerchantLabelState> {
+  const session = await requireSession()
+
+  const parsedMatch = matchType.safeParse(String(formData.get('matchType') ?? ''))
+  const pattern = String(formData.get('pattern') ?? '')
+  const label = String(formData.get('label') ?? '')
+  // A bad match type can only come from a tampered form, not the UI; treat it
+  // as the same "nothing to apelidar" case rather than a distinct message.
+  if (!parsedMatch.success || !pattern.trim()) {
+    return { error: UNKNOWN_MERCHANT_ERROR, message: null }
+  }
+  if (!label.trim()) return { error: EMPTY_LABEL_ERROR, message: null }
+
+  const { ok } = await setMerchantLabel(getDb(), session.householdId, {
+    matchType: parsedMatch.data,
+    pattern,
+    label,
+  })
+  // ok is false only when the pattern normalized away to nothing -- a
+  // descriptor with no letters or digits to match on.
+  if (!ok) return { error: UNKNOWN_MERCHANT_ERROR, message: null }
+
+  // Every screen that shows a merchant name just changed.
+  revalidatePath('/dashboard')
+  revalidatePath('/ledger')
+  revalidatePath('/inbox')
+  revalidatePath('/year')
+
+  return { error: null, message: LABEL_SAVED_MESSAGE }
+}
+
+/** Removes a household label, falling every row it matched back to its bank
+ *  descriptor. */
+export async function clearMerchantLabelAction(
+  _prev: MerchantLabelState,
+  formData: FormData,
+): Promise<MerchantLabelState> {
+  const session = await requireSession()
+
+  const parsedMatch = matchType.safeParse(String(formData.get('matchType') ?? ''))
+  const pattern = String(formData.get('pattern') ?? '')
+  if (!parsedMatch.success || !pattern.trim()) {
+    return { error: UNKNOWN_MERCHANT_ERROR, message: null }
+  }
+
+  await clearMerchantLabel(getDb(), session.householdId, {
+    matchType: parsedMatch.data,
+    pattern,
+  })
+
+  revalidatePath('/dashboard')
+  revalidatePath('/ledger')
+  revalidatePath('/inbox')
+  revalidatePath('/year')
+
+  return { error: null, message: LABEL_CLEARED_MESSAGE }
 }
 
 /**

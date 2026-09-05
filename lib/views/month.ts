@@ -5,6 +5,7 @@ import { listBudgets } from '@/lib/db/budgets'
 import { listCategories } from '@/lib/db/categories'
 import type { Db } from '@/lib/db/client'
 import { getHouseholdHealth, type HouseholdHealth } from '@/lib/db/health'
+import { listMerchantLabels, resolveLabel } from '@/lib/db/merchant-labels'
 import {
   daysInPeriod,
   groupBudgetsByCategory,
@@ -42,9 +43,15 @@ export type MonthTransaction = {
   amountCents: number
   description: string
   /**
+   * The household's own name for this merchant, or null when none matches. When
+   * set, the row shows this in place of the bank descriptor; the descriptor
+   * itself stays in `description` for the detail sheet.
+   */
+  label: string | null
+  /**
    * The noise-stripped merchant the rule engine matches on, or null when the
-   * descriptor normalizes to nothing. Prefills the pattern when a rule is
-   * created from this row, so the seed matches what the rule would then catch.
+   * descriptor normalizes to nothing. Prefills the pattern when a rule or a
+   * label is created from this row, so the seed matches what it would catch.
    */
   merchantNormalized: string | null
   accountName: string
@@ -209,7 +216,8 @@ export async function getMonthView(
 
   const { start: monthStart, end: monthEnd } = monthBounds(period)
 
-  const [totals, detail, categories, budgetRows, health, pendingFaturaLines] = await Promise.all([
+  const [totals, detail, categories, budgetRows, health, pendingFaturaLines, labels] =
+    await Promise.all([
     // Both roles in one query. Receita reads INCOME rows; every other block
     // reads SPEND. See GROUP_BUDGET_ROLE.
     getCategorySpend(db, householdId, period, today, { roles: ['SPEND', 'INCOME'] }),
@@ -249,6 +257,7 @@ export async function getMonthView(
     listBudgets(db, householdId),
     getHouseholdHealth(db, householdId, opts),
     getPendingFaturaLines(db, householdId, period),
+    listMerchantLabels(db, householdId),
   ])
 
   const elapsedDays =
@@ -270,6 +279,7 @@ export async function getMonthView(
     amountCents:
       row.budgetRole === 'INCOME' ? toActualCents(row.amountCents, 'RECEITA') : row.amountCents,
     description: row.description,
+    label: resolveLabel(labels, row.merchantNormalized),
     merchantNormalized: row.merchantNormalized,
     accountName: row.accountName,
     institution: row.institution,

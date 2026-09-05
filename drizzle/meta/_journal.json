@@ -127,6 +127,13 @@
       "when": 1788628736879,
       "tag": "0017_fatura_override",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1788649590434,
+      "tag": "0018_large_fabian_cortez",
+      "breakpoints": true
     }
   ]
 }

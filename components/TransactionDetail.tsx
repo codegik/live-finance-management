@@ -62,6 +62,10 @@ export function TransactionDetail({
     last4: transaction.last4,
   })
   const fullAccount = `${transaction.accountName}${transaction.last4 ? ` ···· ${transaction.last4}` : ''}`
+  // The household's own name when one matches this merchant, the bank descriptor
+  // otherwise. The descriptor is never lost: when a label shows, the original
+  // still appears in the sheet below as "Descrição original".
+  const displayName = transaction.label ?? transaction.description
 
   return (
     <>
@@ -85,7 +89,7 @@ export function TransactionDetail({
         </span>
         <span className="min-w-0 flex-1">
           <span className="block break-words text-sm font-medium">
-            {transaction.description}
+            {displayName}
             {/* Marked, not hidden: a pending charge is real money the bank app
                 already shows, so it counts in the figure -- the badge only says
                 it may still move before the fatura closes. */}
@@ -121,7 +125,7 @@ export function TransactionDetail({
           >
             <div className="mb-4 flex items-start justify-between gap-3">
               <h2 className="break-words text-base font-semibold leading-snug">
-                {transaction.description}
+                {displayName}
               </h2>
               <button
                 type="button"
@@ -140,6 +144,11 @@ export function TransactionDetail({
             <dl className="flex flex-col gap-2.5 text-sm">
               {transaction.pending ? (
                 <DetailRow label="Situação" value="Pendente · ainda não fechada na fatura" />
+              ) : null}
+              {/* Only when a label is replacing it up top -- otherwise the
+                  heading already IS the descriptor and repeating it is noise. */}
+              {transaction.label ? (
+                <DetailRow label="Descrição original" value={transaction.description} />
               ) : null}
               <DetailRow label="Data" value={fullDate(transaction.date)} />
               <DetailRow label="Conta" value={fullAccount} />

@@ -395,3 +395,50 @@ export const faturaOverrides = pgTable(
 
 export type FaturaOverride = typeof faturaOverrides.$inferSelect
 export type NewFaturaOverride = typeof faturaOverrides.$inferInsert
+
+/**
+ * A household's own name for a merchant, matched exactly the way a
+ * merchant_rule is: a match type (EXACT or CONTAINS) against a normalized
+ * pattern (see ruleMatchTypeEnum and lib/domain/categorize.ts). A CONTAINS
+ * label is what covers a whole merchant at once -- every past instalment, the
+ * back-and-forth, and every row a future sync brings in -- because a single
+ * pattern like 'GADERMATOLOGIA' is a substring of all of their normalized
+ * descriptors; EXACT pins the label to one descriptor only.
+ *
+ * Purely presentational: it changes the name a row shows, nothing about its
+ * category, budget role, or totals. When a row's merchant matches, the label
+ * replaces the bank descriptor on the row; the original descriptor still shows
+ * in the detail sheet, so nothing is hidden. When more than one label matches a
+ * row, the most specific wins (EXACT over CONTAINS, then the longer pattern);
+ * see resolveLabel in lib/db/merchant-labels.ts.
+ *
+ * No bank scope, unlike merchant_rule: a household names a shop the same
+ * whichever card it was paid on, so the extra column would only be a way to get
+ * it wrong.
+ */
+export const merchantLabels = pgTable(
+  'merchant_label',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    householdId: uuid('household_id')
+      .notNull()
+      .references(() => households.id, { onDelete: 'cascade' }),
+    matchType: ruleMatchTypeEnum('match_type').notNull(),
+    // Stored already normalized, exactly as merchant_rule.pattern is, so the
+    // match is symmetrical with the transaction's merchant_normalized.
+    pattern: text('pattern').notNull(),
+    label: text('label').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // One label per (match type, pattern) per household: re-typing the same
+    // pattern updates the name in place rather than stacking two labels that
+    // would race to win the row.
+    uniqueIndex('merchant_label_unique').on(t.householdId, t.matchType, t.pattern),
+    index('merchant_label_household_idx').on(t.householdId),
+  ],
+)
+
+export type MerchantLabel = typeof merchantLabels.$inferSelect
+export type NewMerchantLabel = typeof merchantLabels.$inferInsert

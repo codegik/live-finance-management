@@ -1,4 +1,5 @@
 import { RuleFromTransaction } from '@/app/(app)/settings/rules/RuleForms'
+import { MerchantLabelButton } from '@/components/MerchantLabelButton'
 import { PlanEditor } from '@/components/PlanEditor'
 import { TransactionCategoryPicker } from '@/components/TransactionCategoryPicker'
 import { TransactionDetail } from '@/components/TransactionDetail'
@@ -159,6 +160,10 @@ function RowTransactions({
                 categoryId={transaction.categoryId}
                 categories={categories}
                 compact
+              />
+              <MerchantLabelButton
+                merchant={transaction.merchantNormalized}
+                currentLabel={transaction.label}
               />
               <RuleFromTransaction
                 merchant={transaction.merchantNormalized}
