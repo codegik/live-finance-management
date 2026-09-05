@@ -1,3 +1,4 @@
+import { FaturaOverrideForm } from '@/components/FaturaOverrideForm'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { brl, monthLabel } from '@/lib/format'
@@ -71,6 +72,8 @@ export function FaturaList({
                         fatura fechada
                         {dueLabel(row.dueDate) ? ` · ${dueLabel(row.dueDate)}` : ''}
                       </span>
+                    ) : row.source === 'OVERRIDE' ? (
+                      <Badge variant="secondary">informado por você</Badge>
                     ) : (
                       <Badge variant="warn">em formação</Badge>
                     )}
@@ -83,6 +86,17 @@ export function FaturaList({
                       <span className="basis-full text-right text-xs text-text-faint">
                         mínimo {brl(row.minimumCents)}
                       </span>
+                    ) : null}
+
+                    {/* A bill is the bank's own number -- nothing to inform. Any
+                        other row is an open cycle the household can correct. */}
+                    {row.source !== 'BILL' ? (
+                      <FaturaOverrideForm
+                        accountId={card.accountId}
+                        period={row.period}
+                        estimateCents={row.estimateCents ?? 0}
+                        overrideCents={row.source === 'OVERRIDE' ? row.amountCents : null}
+                      />
                     ) : null}
                   </li>
                 )

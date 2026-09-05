@@ -366,3 +366,32 @@ export const bills = pgTable(
 
 export type Bill = typeof bills.$inferSelect
 export type NewBill = typeof bills.$inferInsert
+
+/**
+ * A household-entered total for an OPEN fatura the bank has not published yet.
+ *
+ * Open Finance never exposes the running total of a cycle still in progress, so
+ * the app can only estimate it from the transactions synced so far -- which lag
+ * the bank by days. This lets the household type the figure their bank app
+ * shows, so the number they act on is right today instead of in a week. It is
+ * explicitly provisional and self-expiring: the moment a real `bill` lands for
+ * the same (account, period), that authoritative total wins and this row is
+ * ignored (see lib/views/faturas.ts). One override per card per month.
+ */
+export const faturaOverrides = pgTable(
+  'fatura_override',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    accountId: uuid('account_id')
+      .notNull()
+      .references(() => accounts.id, { onDelete: 'cascade' }),
+    period: date('period').notNull(),
+    totalAmountCents: bigint('total_amount_cents', { mode: 'number' }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('fatura_override_account_period_unique').on(t.accountId, t.period)],
+)
+
+export type FaturaOverride = typeof faturaOverrides.$inferSelect
+export type NewFaturaOverride = typeof faturaOverrides.$inferInsert

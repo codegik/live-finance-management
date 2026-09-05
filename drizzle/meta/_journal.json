@@ -120,6 +120,13 @@
       "when": 1788623143551,
       "tag": "0016_bill",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1788628736879,
+      "tag": "0017_fatura_override",
+      "breakpoints": true
     }
   ]
 }

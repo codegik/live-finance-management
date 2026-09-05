@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { MonthBlock } from '@/components/MonthBlock'
 import { MonthNav } from '@/components/MonthNav'
 import { MonthSummary } from '@/components/MonthSummary'
+import { PendingFaturaSection } from '@/components/PendingFaturaSection'
 import { StaleBanner } from '@/components/StaleBanner'
 import { Badge } from '@/components/ui/badge'
 import { buttonVariants } from '@/components/ui/button'
@@ -119,6 +120,16 @@ export default async function MonthPage({
           }
         />
       ))}
+
+      {/* Below the category blocks: spend on faturas the household informed by
+          hand that the transactions have not caught up to. Only when there is
+          any, so a household that never overrides never sees it. */}
+      {view.pendingFaturaCents > 0 ? (
+        <PendingFaturaSection
+          totalCents={view.pendingFaturaCents}
+          lines={view.pendingFaturaLines}
+        />
+      ) : null}
     </main>
   )
 }

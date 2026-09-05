@@ -20,6 +20,7 @@ import {
   GROUP_BUDGET_ROLE,
   toActualCents,
 } from '@/lib/domain/seed-categories'
+import { getPendingFaturaLines, type PendingFaturaLine } from './faturas'
 import { getCategorySpend } from './spend'
 
 /** Where a period sits relative to the household's today. */
@@ -140,6 +141,16 @@ export type MonthView = {
    * it -- the two screens then disagree about the same month.
    */
   expenseCents: number
+  /**
+   * Spend the household knows is coming but that has not itemised yet: the gap
+   * between a fatura total it typed by hand (an OVERRIDE) and the transactions
+   * synced so far for that card this month. Included in `expenseCents` so the
+   * headline matches the real fatura, and surfaced as its own line below the
+   * blocks so the money is explained rather than silently inflating the total.
+   */
+  pendingFaturaCents: number
+  /** One entry per card contributing to `pendingFaturaCents`. */
+  pendingFaturaLines: PendingFaturaLine[]
   /** SPEND this month that no drawn row accounts for: archived categories. */
   archivedSpentCents: number
   /** INCOME this month that no Receita row accounts for: uncategorized or archived. */
@@ -198,7 +209,7 @@ export async function getMonthView(
 
   const { start: monthStart, end: monthEnd } = monthBounds(period)
 
-  const [totals, detail, categories, budgetRows, health] = await Promise.all([
+  const [totals, detail, categories, budgetRows, health, pendingFaturaLines] = await Promise.all([
     // Both roles in one query. Receita reads INCOME rows; every other block
     // reads SPEND. See GROUP_BUDGET_ROLE.
     getCategorySpend(db, householdId, period, today, { roles: ['SPEND', 'INCOME'] }),
@@ -237,6 +248,7 @@ export async function getMonthView(
     listCategories(db, householdId),
     listBudgets(db, householdId),
     getHouseholdHealth(db, householdId, opts),
+    getPendingFaturaLines(db, householdId, period),
   ])
 
   const elapsedDays =
@@ -401,7 +413,11 @@ export async function getMonthView(
 
   const investedCents = actual('INVESTIMENTO')
   const incomeCents = totalIncomeCents
-  const expenseCents = totalSpentCents - investedCents
+  // Spend already committed on faturas the household informed by hand but that
+  // the transaction feed has not caught up to. Part of what left the household,
+  // so it belongs in the expense total and in the balance below it.
+  const pendingFaturaCents = pendingFaturaLines.reduce((sum, line) => sum + line.diffCents, 0)
+  const expenseCents = totalSpentCents - investedCents + pendingFaturaCents
 
   // What the blocks could not draw. Surfaced rather than dropped, so that the
   // rows on screen and the total above them add up to the same month.
@@ -424,6 +440,8 @@ export async function getMonthView(
     incomeCents,
     investedCents,
     expenseCents,
+    pendingFaturaCents,
+    pendingFaturaLines,
     archivedSpentCents:
       totalSpentCents - drawnSpendCents - (uncategorized?.spentCents ?? 0),
     unassignedIncomeCents: totalIncomeCents - actual('RECEITA'),
