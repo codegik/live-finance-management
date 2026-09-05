@@ -17,6 +17,13 @@ const MAX_TRANSACTION_PAGES = 100
 export type PluggyClient = {
   createConnectToken(itemId?: string): Promise<string>
   getItem(itemId: string): Promise<PluggyItem>
+  /**
+   * Asks Pluggy to re-fetch this item from the institution now, rather than
+   * waiting for the plan's automatic cadence. The call returns as soon as the
+   * refresh is accepted -- the item goes to UPDATING and the fresh data arrives
+   * later via the `item/updated` webhook -- so it is a trigger, not a fetch.
+   */
+  updateItem(itemId: string): Promise<PluggyItem>
   listAccounts(itemId: string): Promise<PluggyAccount[]>
   /**
    * Every transaction for the account. v2 has no transaction-date filter, so
@@ -84,6 +91,15 @@ export function createPluggyClient(config: PluggyConfig): PluggyClient {
     },
 
     getItem: (itemId) => request<PluggyItem>(`/items/${itemId}`),
+
+    updateItem: (itemId) =>
+      request<PluggyItem>(`/items/${itemId}`, {
+        method: 'PATCH',
+        // An empty body re-runs the stored connection. Credentials are never
+        // held here: an MFA connector that needs re-consent is refreshed
+        // through the Connect widget's reconnect flow, not this call.
+        body: JSON.stringify({}),
+      }),
 
     async listAccounts(itemId) {
       const body = await request<{ results: PluggyAccount[] }>(`/accounts?itemId=${itemId}`)

@@ -1,7 +1,9 @@
+import { eq } from 'drizzle-orm'
 import { beforeEach, expect, it } from 'vitest'
 import { hashPassword } from '@/lib/auth/password'
 import { listAccounts, listConnections } from '@/lib/db/connections'
 import { createHousehold } from '@/lib/db/households'
+import { transactions } from '@/lib/db/schema'
 import { listTransactions } from '@/lib/db/transactions'
 import { createPluggyClient } from '@/lib/pluggy/client'
 import { attachConnection } from '@/lib/sync/connect'
@@ -258,6 +260,140 @@ it('does not leak transactions across households', async () => {
 
   expect(await listTransactions(db, other.householdId)).toHaveLength(0)
   expect(await listTransactions(db, householdId)).not.toHaveLength(0)
+})
+
+it('prunes a recent charge that left the feed, so a re-post cannot duplicate it', async () => {
+  const { db, householdId, connectionId } = await seedConnection()
+  // Fixed so the fixture's August rows sit inside the 90-day prune window.
+  const now = new Date('2026-09-01T12:00:00.000Z')
+  await syncConnection(db, pluggy(), connectionId, { now })
+
+  const { http, HttpResponse } = await import('msw')
+  // Pluggy warns a settling charge can re-post under a NEW id. tx-1 does
+  // exactly that; the old id is now absent from the feed.
+  server.use(
+    http.get('https://api.pluggy.test/v2/transactions', ({ request }) => {
+      const accountId = new URL(request.url).searchParams.get('accountId')
+      if (accountId !== 'acc-credit-1') return HttpResponse.json({ results: [], next: null })
+      return HttpResponse.json({
+        results: [
+          {
+            id: 'tx-1-reposted',
+            accountId: 'acc-credit-1',
+            description: 'ZAFFARI PORTO ALEG *0421',
+            amount: 284.9,
+            date: '2026-08-20T14:02:00.000Z',
+            type: 'DEBIT',
+            category: 'Supermarkets',
+          },
+        ],
+        next: null,
+      })
+    }),
+  )
+
+  await syncConnection(db, pluggy(), connectionId, { now })
+  const rows = await listTransactions(db, householdId, { includeExcluded: true })
+  const zaffari = rows.filter((r) => r.description.startsWith('ZAFFARI PORTO'))
+
+  // The stale id is gone; the charge is not counted twice.
+  expect(zaffari).toHaveLength(1)
+  expect(zaffari[0].pluggyTransactionId).toBe('tx-1-reposted')
+})
+
+it('never prunes a hand-categorized row, even when the feed drops it', async () => {
+  const { db, householdId, connectionId } = await seedConnection()
+  const now = new Date('2026-09-01T12:00:00.000Z')
+  await syncConnection(db, pluggy(), connectionId, { now })
+
+  // The household has filed tx-1 by hand -- human intent the sync must respect.
+  await db
+    .update(transactions)
+    .set({ categorySource: 'MANUAL' })
+    .where(eq(transactions.pluggyTransactionId, 'tx-1'))
+
+  const { http, HttpResponse } = await import('msw')
+  server.use(
+    http.get('https://api.pluggy.test/v2/transactions', ({ request }) => {
+      const accountId = new URL(request.url).searchParams.get('accountId')
+      if (accountId !== 'acc-credit-1') return HttpResponse.json({ results: [], next: null })
+      // The feed no longer lists tx-1, but returns another row so the empty
+      // guard is not what's being tested here.
+      return HttpResponse.json({
+        results: [
+          {
+            id: 'tx-other',
+            accountId: 'acc-credit-1',
+            description: 'PADARIA',
+            amount: 12,
+            date: '2026-08-20T14:02:00.000Z',
+            type: 'DEBIT',
+          },
+        ],
+        next: null,
+      })
+    }),
+  )
+
+  await syncConnection(db, pluggy(), connectionId, { now })
+  const rows = await listTransactions(db, householdId, { includeExcluded: true })
+
+  expect(rows.some((r) => r.pluggyTransactionId === 'tx-1')).toBe(true)
+})
+
+it('never deletes when the feed comes back empty, so a transient sync cannot wipe an account', async () => {
+  const { db, householdId, connectionId } = await seedConnection()
+  const now = new Date('2026-09-01T12:00:00.000Z')
+  await syncConnection(db, pluggy(), connectionId, { now })
+  const before = await listTransactions(db, householdId, { includeExcluded: true })
+
+  const { http, HttpResponse } = await import('msw')
+  server.use(
+    http.get('https://api.pluggy.test/v2/transactions', () =>
+      HttpResponse.json({ results: [], next: null }),
+    ),
+  )
+
+  await syncConnection(db, pluggy(), connectionId, { now })
+  const after = await listTransactions(db, householdId, { includeExcluded: true })
+
+  expect(after).toHaveLength(before.length)
+})
+
+it('leaves a charge older than the prune window in place even when the feed drops it', async () => {
+  const { db, householdId, connectionId } = await seedConnection()
+  // Now is months after the fixture, so its August rows are OUTSIDE the 90-day
+  // window -- the zone Pluggy's own history may no longer cover.
+  const now = new Date('2027-01-01T12:00:00.000Z')
+  await syncConnection(db, pluggy(), connectionId, { now })
+
+  const { http, HttpResponse } = await import('msw')
+  // The feed drops tx-1 but still returns something, so the empty-feed guard is
+  // NOT what protects tx-1 here -- only the date window is.
+  server.use(
+    http.get('https://api.pluggy.test/v2/transactions', ({ request }) => {
+      const accountId = new URL(request.url).searchParams.get('accountId')
+      if (accountId !== 'acc-credit-1') return HttpResponse.json({ results: [], next: null })
+      return HttpResponse.json({
+        results: [
+          {
+            id: 'tx-keepalive',
+            accountId: 'acc-credit-1',
+            description: 'KEEPALIVE',
+            amount: 10,
+            date: '2026-08-19T03:00:00.000Z',
+            type: 'DEBIT',
+          },
+        ],
+        next: null,
+      })
+    }),
+  )
+
+  await syncConnection(db, pluggy(), connectionId, { now })
+  const rows = await listTransactions(db, householdId, { includeExcluded: true })
+
+  expect(rows.some((r) => r.pluggyTransactionId === 'tx-1')).toBe(true)
 })
 
 it('picks up an account opened on an already-connected login', async () => {

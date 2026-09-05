@@ -1,3 +1,4 @@
+import { eq } from 'drizzle-orm'
 import { evaluateAndNotify } from '@/lib/alerts/evaluate'
 import { seedCategories } from '@/lib/db/categories'
 import { seedDefaultRules } from '@/lib/db/rules'
@@ -10,6 +11,78 @@ import { refreshBudgetRoles } from './budget-roles'
 import { refreshBudgetMonths } from './budget-month'
 import { refreshInstallments } from './installments'
 import { syncConnection } from './transactions'
+
+/**
+ * The household-wide passes that follow every sync, in their load-bearing
+ * order. Extracted so the nightly reconcile and the on-demand single-connection
+ * refresh run the exact same sequence -- a second copy is how the manual button
+ * and the cron would start filing the same charge in different months.
+ *
+ * Every ordering note here is a constraint, not a preference: seed before
+ * recategorize (an empty taxonomy resolves nothing), recategorize before roles
+ * (a role can be forced by the category a row now sits under), installments
+ * before budget-months (the billing shift turns on installment_number). See the
+ * original inline comments preserved below.
+ */
+export async function reconcileHousehold(
+  db: Db,
+  householdId: string,
+): Promise<{
+  recategorized: number
+  rolesCorrected: number
+  installmentsCorrected: number
+  budgetMonthsCorrected: number
+}> {
+  await seedCategories(db, householdId)
+  await seedDefaultRules(db, householdId)
+  const { changed: recategorized } = await recategorize(db, { householdId })
+  const { changed: rolesCorrected } = await refreshBudgetRoles(db, householdId)
+  const { changed: installmentsCorrected } = await refreshInstallments(db, householdId)
+  const { changed: budgetMonthsCorrected } = await refreshBudgetMonths(db, householdId)
+  return { recategorized, rolesCorrected, installmentsCorrected, budgetMonthsCorrected }
+}
+
+/**
+ * Syncs one connection on demand, then runs the household passes and alerts --
+ * the button on Conexões. Returns what moved so the action can tell the user
+ * whether the refresh actually changed anything.
+ *
+ * The forced item update (asking Pluggy to re-fetch from the bank) is the
+ * caller's job, not this function's: it is best-effort and rate-limited, and a
+ * refresh must still re-read and re-file whatever Pluggy already holds even when
+ * that trigger is refused.
+ */
+export async function reconcileConnection(
+  db: Db,
+  pluggy: PluggyClient,
+  connectionId: string,
+  deps: { mailer: Mailer; now?: Date },
+): Promise<{ synced: boolean; pruned: number }> {
+  const [connection] = await db
+    .select({ id: connections.id, householdId: connections.householdId })
+    .from(connections)
+    .where(eq(connections.id, connectionId))
+    .limit(1)
+  if (!connection) return { synced: false, pruned: 0 }
+
+  const { pruned } = await syncConnection(db, pluggy, connection.id, { now: deps.now })
+
+  try {
+    await reconcileHousehold(db, connection.householdId)
+  } catch (error) {
+    console.error('reconcile passes failed', { householdId: connection.householdId, error })
+  }
+
+  // Never let a mail outage fail a refresh the user is watching -- same reason
+  // as syncByItemId.
+  try {
+    await evaluateAndNotify(db, deps.mailer, connection.householdId, { now: deps.now })
+  } catch (error) {
+    console.error('alerts failed', { householdId: connection.householdId, error })
+  }
+
+  return { synced: true, pruned }
+}
 
 export async function reconcileAll(
   db: Db,
@@ -57,54 +130,15 @@ export async function reconcileAll(
   let alerted = 0
   for (const { householdId } of households) {
     try {
-      // Seed FIRST, recategorize SECOND, and the order is load-bearing.
-      //
-      // A household that predates the categorization migration has no
-      // category rows at all -- seedCategories only ever ran from household
-      // creation, and the migration inserts nothing. With an empty taxonomy
-      // recategorize can resolve nothing: every Pluggy category falls
-      // through to null and the whole slice is inert. Seeding here is the
-      // backfill; it is idempotent (onConflictDoNothing on
-      // (household_id, seed_key)), so for every other household it is a
-      // no-op.
-      //
-      // recategorize then has categories to resolve into, and it is also
-      // what backfills merchant_normalized on the pre-existing rows the
-      // migration left NULL. That matters beyond tidiness: until they are
-      // normalized the inbox groups the entire back-catalogue under one
-      // "no usable merchant" group, whose only offered action stamps every
-      // row MANUAL -- which no sync or backfill ever revisits.
-      await seedCategories(db, householdId)
-      await seedDefaultRules(db, householdId)
-      // BEFORE refreshBudgetRoles, and the order is now load-bearing: a row's
-      // role can be forced by the category it sits under -- a fatura payment
-      // filed under the TRANSFER category leaves every total -- so the category
-      // must be resolved before the role pass reads it. See resolveBudgetRole
-      // and lib/sync/budget-roles.ts.
-      const { changed } = await recategorize(db, { householdId })
-      recategorized += changed
-      // The only pass that corrects budget_role on a row the mapper did not
-      // touch -- one whose Pluggy category changed since the last sync, one
-      // 0009 backfilled and the connector has since re-categorized, or one the
-      // household just filed under a TRANSFER category above. Re-derives every
-      // row from the live category, so moving a payment out of the card-payment
-      // category returns it to SPEND here with no migration.
-      const { changed: roled } = await refreshBudgetRoles(db, householdId)
-      rolesCorrected += roled
-      // This pass keys on installment_number/total, which nothing else writes.
-      // It is here rather than only at ingest because drizzle/0006 added those
-      // columns with no backfill and Pluggy never re-delivers an old
-      // transaction -- so every row that predates the columns is NULL until
-      // something goes back and reads its descriptor. See
-      // lib/sync/installments.ts.
-      const { changed: parcels } = await refreshInstallments(db, householdId)
-      installmentsCorrected += parcels
-      // AFTER refreshInstallments, and the order is load-bearing: the billing
-      // rule turns on installment_number, because instalments 2..N arrive
-      // already dated by the fatura they belong to. Run first, every parcela
-      // would be shifted a second time and land a month late.
-      const { changed: months } = await refreshBudgetMonths(db, householdId)
-      budgetMonthsCorrected += months
+      // The whole load-bearing sequence -- seed, recategorize, roles,
+      // installments, budget-months -- lives in reconcileHousehold, so the
+      // nightly job and the on-demand refresh button can never drift on the
+      // order that decides which month a charge lands in.
+      const counts = await reconcileHousehold(db, householdId)
+      recategorized += counts.recategorized
+      rolesCorrected += counts.rolesCorrected
+      installmentsCorrected += counts.installmentsCorrected
+      budgetMonthsCorrected += counts.budgetMonthsCorrected
     } catch (error) {
       // Same try/catch as before, now covering the seed too: a failure to
       // seed one household must not stop the others being recategorized.

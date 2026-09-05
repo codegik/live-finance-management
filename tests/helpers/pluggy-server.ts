@@ -18,6 +18,11 @@ export function createPluggyServer(overrides: RequestHandler[] = []) {
     }),
     http.post(`${BASE}/connect_token`, () => HttpResponse.json({ accessToken: 'connect-token-abc' })),
     http.get(`${BASE}/items/:itemId`, () => HttpResponse.json(item)),
+    // A forced refresh: real Pluggy accepts the PATCH and flips the item to
+    // UPDATING while it re-fetches from the bank. The fixture status is enough
+    // for the sync that follows; tests that need the throttle path override this
+    // with a 4xx.
+    http.patch(`${BASE}/items/:itemId`, () => HttpResponse.json(item)),
     // Real Pluggy scopes /accounts to the requested itemId (the client sends
     // it as a query param); filtering here too matters now that
     // refreshAccounts runs on every sync, not only at connect time, so a

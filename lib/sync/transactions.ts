@@ -1,6 +1,7 @@
-import { eq } from 'drizzle-orm'
+import { and, eq, gte, isNull, ne, notInArray, or } from 'drizzle-orm'
 import type { Db } from '@/lib/db/client'
 import { accounts, connections, transactions } from '@/lib/db/schema'
+import { daysBefore } from '@/lib/domain/dates'
 import { mapTransaction } from '@/lib/pluggy/mapper'
 import type { PluggyClient } from '@/lib/pluggy/client'
 import { refreshAccounts } from './accounts'
@@ -15,12 +16,31 @@ import { recategorize } from './categorize'
  * transactions that later mutate.
  */
 
+/**
+ * How far back the orphan prune looks.
+ *
+ * A charge can leave the feed under its old id and return under a new one --
+ * Pluggy warns the id changes when a PENDING authorization settles, or when a
+ * charge's date/amount shifts enough that it re-posts as a new record. The
+ * upsert keys on that id, so the stale copy would otherwise linger forever as a
+ * duplicate. Deleting local rows the feed no longer lists removes it.
+ *
+ * Bounded to recent dates on purpose: this churn only happens around the open
+ * and just-closed faturas, never in settled history, and Pluggy's per-connector
+ * history window may be SHORTER than the three years the household keeps. An
+ * unbounded prune would read "old but still returned by us, absent from a
+ * 12-month feed" as an orphan and delete real history. 90 days covers an open
+ * cycle and the one before it with room to spare, and never reaches the deep
+ * history that only the bank could re-supply.
+ */
+const ORPHAN_PRUNE_DAYS = 90
+
 export async function syncConnection(
   db: Db,
   pluggy: PluggyClient,
   connectionId: string,
   opts: { now?: Date } = {},
-): Promise<{ upserted: number }> {
+): Promise<{ upserted: number; pruned: number }> {
   const [connection] = await db
     .select()
     .from(connections)
@@ -39,12 +59,15 @@ export async function syncConnection(
     .from(accounts)
     .where(eq(accounts.connectionId, connectionId))
 
+  const now = opts.now ?? new Date()
   let upserted = 0
+  let pruned = 0
   const touched: string[] = []
 
   for (const account of localAccounts) {
     const remote = await pluggy.listTransactions(account.pluggyAccountId)
 
+    const remoteIds: string[] = []
     for (const tx of remote) {
       const row = mapTransaction(tx, { id: account.id, type: account.type })
       const [written] = await db
@@ -70,7 +93,38 @@ export async function syncConnection(
         })
         .returning({ id: transactions.id })
       touched.push(written.id)
+      remoteIds.push(row.pluggyTransactionId)
       upserted += 1
+    }
+
+    // Prune duplicates left behind when a charge re-posts under a new id.
+    //
+    // Two guards make this safe to delete on:
+    //   - Empty feed: a transient sync that returns nothing must never be read
+    //     as "the account has no transactions" and wipe it -- with no remote
+    //     ids, notInArray would match every local row.
+    //   - MANUAL rows: a charge the household has categorized by hand carries
+    //     human intent, so it is never silently deleted even if it drops out of
+    //     the feed. A sync-derived row (null / PLUGGY / RULE) is pure
+    //     projection of the feed and safe to remove once the feed no longer
+    //     lists it. See ORPHAN_PRUNE_DAYS for why this is bounded to recent
+    //     dates.
+    if (remoteIds.length > 0) {
+      const deleted = await db
+        .delete(transactions)
+        .where(
+          and(
+            eq(transactions.accountId, account.id),
+            gte(transactions.date, daysBefore(ORPHAN_PRUNE_DAYS, now)),
+            notInArray(transactions.pluggyTransactionId, remoteIds),
+            or(
+              isNull(transactions.categorySource),
+              ne(transactions.categorySource, 'MANUAL'),
+            ),
+          ),
+        )
+        .returning({ id: transactions.id })
+      pruned += deleted.length
     }
   }
 
@@ -83,5 +137,5 @@ export async function syncConnection(
     .set({ status: item.status, lastSyncedAt: new Date() })
     .where(eq(connections.id, connectionId))
 
-  return { upserted }
+  return { upserted, pruned }
 }

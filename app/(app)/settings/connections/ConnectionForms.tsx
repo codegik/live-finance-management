@@ -1,13 +1,47 @@
 'use client'
 
+import { RefreshCw } from 'lucide-react'
 import { useActionState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { removeConnectionAction, saveAccountDaysAction } from './actions'
+import {
+  refreshConnectionAction,
+  removeConnectionAction,
+  saveAccountDaysAction,
+} from './actions'
 import type { ConnectionState } from './state'
 
 const INITIAL: ConnectionState = { error: null, message: null }
+
+/**
+ * "Atualizar agora" -- forces a fresh pull from the bank instead of waiting for
+ * Pluggy's automatic cadence, so a purchase the user just made shows up without
+ * a day's delay. The result line sits under the button because the fetch is
+ * asynchronous: the button confirms the request was accepted, and the freshest
+ * data lands moments later when Pluggy's webhook fires the sync.
+ */
+export function RefreshConnectionForm({ connectionId }: { connectionId: string }) {
+  const [state, formAction, pending] = useActionState(refreshConnectionAction, INITIAL)
+
+  return (
+    <form action={formAction} className="flex flex-col items-end gap-1">
+      <input type="hidden" name="connectionId" value={connectionId} />
+      <Button type="submit" variant="outline" size="sm" disabled={pending}>
+        <RefreshCw className={`size-4${pending ? ' animate-spin' : ''}`} />
+        {pending ? 'Atualizando…' : 'Atualizar agora'}
+      </Button>
+      {state.error ? (
+        <p role="alert" className="max-w-56 text-right text-xs text-neg">
+          {state.error}
+        </p>
+      ) : null}
+      {state.message ? (
+        <p className="max-w-56 text-right text-xs text-muted-foreground">{state.message}</p>
+      ) : null}
+    </form>
+  )
+}
 
 /**
  * Two steps, not a confirm() dialog: removing a connection cascades to every

@@ -3,13 +3,20 @@
 import { revalidatePath } from 'next/cache'
 import { requireSession } from '@/lib/auth/session'
 import { getDb } from '@/lib/db/client'
-import { deleteConnection, setAccountDays } from '@/lib/db/connections'
+import { deleteConnection, listConnections, setAccountDays } from '@/lib/db/connections'
+import { createMailer } from '@/lib/email/resend'
+import { loadEnv } from '@/lib/env'
+import { createPluggyClient } from '@/lib/pluggy/client'
 import { refreshBudgetMonths } from '@/lib/sync/budget-month'
+import { reconcileConnection } from '@/lib/sync/reconcile'
 import { SAVED_MESSAGE } from '../categories/state'
 import {
   type ConnectionState,
   idSchema,
   INVALID_DAY_ERROR,
+  REFRESH_FAILED_ERROR,
+  REFRESH_THROTTLED_MESSAGE,
+  REFRESHED_MESSAGE,
   REMOVED_MESSAGE,
   UNKNOWN_ACCOUNT_ERROR,
   UNKNOWN_CONNECTION_ERROR,
@@ -105,5 +112,75 @@ export async function saveAccountDaysAction(
   return {
     error: null,
     message: changed > 0 ? refiledMessage(changed) : SAVED_MESSAGE,
+  }
+}
+
+/**
+ * The "Atualizar agora" button: ask Pluggy to re-fetch this bank now instead of
+ * waiting for its automatic cadence, then re-read and re-file whatever it holds.
+ *
+ * The forced fetch is best-effort. Pluggy allows it only about once an hour, and
+ * an MFA connector may refuse it outright; either way the sync below still runs,
+ * so the button always does something -- at worst it re-reads the current data
+ * and prunes any duplicates -- rather than appearing to fail.
+ */
+export async function refreshConnectionAction(
+  _prev: ConnectionState,
+  formData: FormData,
+): Promise<ConnectionState> {
+  const session = await requireSession()
+  const connectionId = String(formData.get('connectionId') ?? '')
+  if (!idSchema.safeParse(connectionId).success) {
+    return { error: UNKNOWN_CONNECTION_ERROR, message: null }
+  }
+
+  // listConnections is already household-scoped, so finding the id here both
+  // authorizes the request and hands us the pluggyItemId -- a connection from
+  // another household simply is not in the list, and reads as gone.
+  const db = getDb()
+  const connection = (await listConnections(db, session.householdId)).find(
+    (c) => c.id === connectionId,
+  )
+  if (!connection) return { error: UNKNOWN_CONNECTION_ERROR, message: null }
+
+  const env = loadEnv()
+  const pluggy = createPluggyClient({
+    apiUrl: env.PLUGGY_API_URL,
+    clientId: env.PLUGGY_CLIENT_ID,
+    clientSecret: env.PLUGGY_CLIENT_SECRET,
+  })
+  const mailer = createMailer({ apiKey: env.RESEND_API_KEY, from: env.ALERT_EMAIL_FROM })
+
+  // Trigger the bank fetch first, but never let its refusal abort the refresh:
+  // a rate-limit or an MFA connector must still fall through to the sync.
+  let throttled = false
+  try {
+    await pluggy.updateItem(connection.pluggyItemId)
+  } catch (error) {
+    throttled = true
+    console.error('force update refused', { connectionId, error })
+  }
+
+  try {
+    const { synced } = await reconcileConnection(db, pluggy, connectionId, { mailer })
+    if (!synced) return { error: UNKNOWN_CONNECTION_ERROR, message: null }
+  } catch (error) {
+    // The sync itself failing (Pluggy auth down, a bad payload) is the one case
+    // the button genuinely could not do anything -- say so honestly.
+    console.error('refresh sync failed', { connectionId, error })
+    return { error: REFRESH_FAILED_ERROR, message: null }
+  }
+
+  revalidatePath('/settings/connections')
+  // The refresh may have pulled new spend, re-filed months, or pruned a
+  // duplicate -- every money screen's cache is now potentially stale.
+  revalidatePath('/dashboard')
+  revalidatePath('/ledger')
+  revalidatePath('/year')
+  revalidatePath('/budgets')
+
+  return {
+    error: null,
+    message: throttled ? REFRESH_THROTTLED_MESSAGE : REFRESHED_MESSAGE,
   }
 }

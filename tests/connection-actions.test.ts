@@ -31,12 +31,11 @@ vi.mock('@/lib/auth/session', () => ({
 }))
 vi.mock('next/cache', () => ({ revalidatePath: () => {} }))
 
-const { removeConnectionAction, saveAccountDaysAction } = await import(
+const { refreshConnectionAction, removeConnectionAction, saveAccountDaysAction } = await import(
   '@/app/(app)/settings/connections/actions'
 )
-const { INVALID_DAY_ERROR, UNKNOWN_ACCOUNT_ERROR, UNKNOWN_CONNECTION_ERROR } = await import(
-  '@/app/(app)/settings/connections/state'
-)
+const { INVALID_DAY_ERROR, REFRESHED_MESSAGE, UNKNOWN_ACCOUNT_ERROR, UNKNOWN_CONNECTION_ERROR } =
+  await import('@/app/(app)/settings/connections/state')
 
 const EMPTY = { error: null, message: null }
 
@@ -85,6 +84,80 @@ it('removes one connection and leaves the other household connection intact', as
   const rows = await listTransactions(db, householdId, { includeExcluded: true })
   expect(rows).toHaveLength(1)
   expect(rows[0].institution).toBe('Itau')
+})
+
+it('refreshes a connection: forces the bank fetch, then re-syncs from Pluggy', async () => {
+  const db = testDb()
+  const { householdId, userId } = await createHousehold(db, {
+    name: 'Klassmann',
+    owner: { email: 'inacio@example.com', name: 'Inacio', passwordHash: await hashPassword('pw') },
+  })
+  session.current = { householdId, id: userId }
+  // A real item the Pluggy fake knows, so the re-sync pulls the fixture in.
+  const { connectionId } = await attachConnection(db, pluggy(), {
+    householdId,
+    ownerUserId: userId,
+    itemId: 'item-nubank-1',
+  })
+
+  const state = await refreshConnectionAction(EMPTY, form({ connectionId }))
+
+  expect(state.error).toBeNull()
+  expect(state.message).toBe(REFRESHED_MESSAGE)
+  // The fixture's transactions are now in the ledger -- the refresh actually
+  // synced, not just accepted the request.
+  const rows = await listTransactions(db, householdId, { includeExcluded: true })
+  expect(rows.length).toBeGreaterThan(0)
+})
+
+it('reports the throttle when Pluggy refuses the forced update, but still re-syncs', async () => {
+  const db = testDb()
+  const { householdId, userId } = await createHousehold(db, {
+    name: 'Klassmann',
+    owner: { email: 'inacio@example.com', name: 'Inacio', passwordHash: await hashPassword('pw') },
+  })
+  session.current = { householdId, id: userId }
+  const { connectionId } = await attachConnection(db, pluggy(), {
+    householdId,
+    ownerUserId: userId,
+    itemId: 'item-nubank-1',
+  })
+
+  const { http, HttpResponse } = await import('msw')
+  const { REFRESH_THROTTLED_MESSAGE } = await import('@/app/(app)/settings/connections/state')
+  // Pluggy caps forced updates at ~once an hour; the PATCH comes back 429.
+  server.use(
+    http.patch('https://api.pluggy.test/items/:itemId', () =>
+      HttpResponse.json({ code: 429 }, { status: 429 }),
+    ),
+  )
+
+  const state = await refreshConnectionAction(EMPTY, form({ connectionId }))
+
+  // The forced fetch was refused, but the sync still ran -- the button did
+  // something rather than appearing to fail.
+  expect(state.error).toBeNull()
+  expect(state.message).toBe(REFRESH_THROTTLED_MESSAGE)
+  const rows = await listTransactions(db, householdId, { includeExcluded: true })
+  expect(rows.length).toBeGreaterThan(0)
+})
+
+it('treats a refresh of another household connection as unknown', async () => {
+  const db = testDb()
+  const mine = await createHousehold(db, {
+    name: 'Klassmann',
+    owner: { email: 'inacio@example.com', name: 'Inacio', passwordHash: await hashPassword('pw') },
+  })
+  const theirs = await createHousehold(db, {
+    name: 'Other',
+    owner: { email: 'other@example.com', name: 'Other', passwordHash: await hashPassword('pw') },
+  })
+  session.current = { householdId: mine.householdId, id: mine.userId }
+  const target = await seedConnection('Itau', theirs.householdId, theirs.userId)
+
+  const state = await refreshConnectionAction(EMPTY, form({ connectionId: target }))
+
+  expect(state.error).toBe(UNKNOWN_CONNECTION_ERROR)
 })
 
 it('refuses to remove another household connection', async () => {

@@ -12,7 +12,7 @@ import {
   listConnectionDetails,
 } from '@/lib/db/connections'
 import { HOUSEHOLD_TIME_ZONE } from '@/lib/domain/dates'
-import { AccountDaysForm, RemoveConnectionForm } from './ConnectionForms'
+import { AccountDaysForm, RefreshConnectionForm, RemoveConnectionForm } from './ConnectionForms'
 import { idSchema } from './state'
 
 export const dynamic = 'force-dynamic'
@@ -126,12 +126,15 @@ export default async function ConnectionsSettingsPage({
                       </div>
                     </div>
                   </div>
-                  <ConnectBankButton
-                    itemId={connection.pluggyItemId}
-                    label="Reconnect"
-                    variant="outline"
-                    size="sm"
-                  />
+                  <div className="flex flex-col items-end gap-2">
+                    <RefreshConnectionForm connectionId={connection.id} />
+                    <ConnectBankButton
+                      itemId={connection.pluggyItemId}
+                      label="Reconnect"
+                      variant="outline"
+                      size="sm"
+                    />
+                  </div>
                 </div>
                 {connection.stale ? (
                   <p

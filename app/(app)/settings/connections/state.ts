@@ -12,3 +12,15 @@ export const REMOVED_MESSAGE = 'Connection removed.'
 export const UNKNOWN_CONNECTION_ERROR = 'That connection no longer exists.'
 export const INVALID_DAY_ERROR = 'A day has to be between 1 and 31.'
 export const UNKNOWN_ACCOUNT_ERROR = 'That account no longer exists.'
+
+/** The bank pulled fresh data, or at least re-read what Pluggy already held. */
+export const REFRESHED_MESSAGE =
+  'Atualização solicitada. Os lançamentos mais recentes chegam em alguns instantes.'
+/**
+ * The forced bank refresh was refused -- Pluggy allows it about once an hour --
+ * but the current data was re-read and re-filed anyway, so the button still did
+ * something rather than appearing to fail.
+ */
+export const REFRESH_THROTTLED_MESSAGE =
+  'Dados atualizados. Uma nova busca no banco só pode ser forçada a cada hora.'
+export const REFRESH_FAILED_ERROR = 'Não foi possível atualizar agora. Tente de novo em instantes.'
