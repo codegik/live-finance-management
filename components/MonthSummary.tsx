@@ -41,7 +41,7 @@ function Stat({
   plannedCents?: number
   /**
    * Saldo's planned residual: what the plan expected to be left over
-   * (planned income applied against the realised balance). Unlike `plannedCents`
+   * (planned income minus planned investment minus planned expenses). Unlike `plannedCents`
    * it can be negative and draws no bar, so it is a Saldo-only figure the box
    * shows underneath its realised balance. Omitted when nothing is planned yet.
    */
@@ -141,14 +141,19 @@ function Stat({
  * rather than as four bare totals.
  */
 export function MonthSummary({ view }: { view: MonthView }) {
-  // The balance the plan implies: the planned income applied against where the
-  // month stands right now. netCents is already the realised balance (negative
-  // when the month is in deficit), so adding the planned income answers "where
-  // would the balance land once the planned receita comes in?".
-  // Only shown once income is actually planned -- with no plan the line would
-  // just repeat the realised balance.
+  // The balance the plan implies, read purely off the plan:
+  //   saldo planejado = receita planejada - investimento planejado - despesas planejadas
+  // i.e. what the month expects to be left over once every planned figure lands,
+  // independent of what has actually happened so far.
+  // Only shown once anything is planned -- with no plan the line would be a bare zero.
   const plannedNetCents =
-    view.plannedIncomeCents > 0 ? view.plannedIncomeCents + view.netCents : undefined
+    view.plannedIncomeCents > 0 ||
+    view.plannedInvestedCents > 0 ||
+    view.plannedExpenseCents > 0
+      ? view.plannedIncomeCents -
+        view.plannedInvestedCents -
+        view.plannedExpenseCents
+      : undefined
 
   return (
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

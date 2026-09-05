@@ -15,7 +15,19 @@ export type Db = ReturnType<typeof createDb>['db']
 export type Executor = Db | Parameters<Parameters<Db['transaction']>[0]>[0]
 
 export function createDb(url: string) {
-  const sql = postgres(url, { max: 5 })
+  // Fly runs this app with auto_stop_machines = "suspend", which freezes the
+  // VM (and every JS timer) while idle. A pooled socket left open across a
+  // suspend is dead on resume — the DB peer has already reset it — so the
+  // first query after wake-up throws `read ECONNRESET`. idle_timeout closes
+  // idle connections during the pre-suspend idle window so nothing stale
+  // survives into suspension; max_lifetime recycles long-lived connections;
+  // connect_timeout bounds the reconnect on resume.
+  const sql = postgres(url, {
+    max: 5,
+    idle_timeout: 20, // seconds a connection may sit idle before it's closed
+    max_lifetime: 60 * 30, // recycle each connection after 30 minutes
+    connect_timeout: 10, // fail fast instead of hanging on a bad socket
+  })
   return { db: drizzle(sql, { schema }), sql }
 }
 
