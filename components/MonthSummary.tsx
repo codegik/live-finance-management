@@ -1,5 +1,5 @@
 import { Card } from '@/components/ui/card'
-import { brl, brlSigned, percent } from '@/lib/format'
+import { brl } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import type { MonthView } from '@/lib/views/month'
 
@@ -32,52 +32,46 @@ function Stat({
   kind,
   actualCents,
   plannedCents = 0,
-  remainingLabel,
-  extraMeta,
+  plannedNetCents,
 }: {
   label: string
   kind: StatKind
   actualCents: number
   /** Omitted for Saldo, which has no plan. */
   plannedCents?: number
-  /** What the shortfall is called while a "more is better" figure is still short. */
-  remainingLabel?: string
-  /** e.g. the sheet's "X% da renda" for Investido, kept alongside the plan. */
-  extraMeta?: string
+  /**
+   * Saldo's planned residual: what the plan expected to be left over
+   * (planned income applied against the realised balance). Unlike `plannedCents`
+   * it can be negative and draws no bar, so it is a Saldo-only figure the box
+   * shows underneath its realised balance. Omitted when nothing is planned yet.
+   */
+  plannedNetCents?: number
 }) {
   // Saldo is a residual and never carries a plan; the others only have one when
   // a figure was actually planned.
   const hasPlan = kind !== 'net' && plannedCents > 0
-  const delta = actualCents - plannedCents
+
+  // Every box carries a second headline: the figure the plan set for it. Saldo's
+  // is the calculated residual; the others' is simply their plan. Shown only
+  // once there is a plan to show, so a plan-less box stays a single figure.
+  const plannedFigureCents = kind === 'net' ? plannedNetCents : hasPlan ? plannedCents : undefined
+  // A residual is coloured by its sign; a plain target has no bad side, so it
+  // reads in the neutral foreground -- big and bold is enough to make it stand.
+  const plannedFigureTone =
+    kind === 'net' ? ((plannedNetCents ?? 0) < 0 ? 'text-neg' : 'text-pos') : 'text-foreground'
 
   // The big figure carries a colour only where a colour means something on its
   // own: Saldo is good or bad by its sign the moment you read it.
   const valueTone = kind === 'net' ? (actualCents < 0 ? 'text-neg' : 'text-pos') : 'text-foreground'
 
+  // The bar's colour is the only thing that still carries direction: green once
+  // a "more is better" figure has met its plan, red once a "less is better" one
+  // has broken it. The gap is no longer spelled out in a chip.
   let barTone = 'bg-primary'
-  let deltaText: string | null = null
-  let deltaTone = 'text-muted-foreground'
-
-  // With no plan there is nothing to measure against, so no gap chip is drawn.
-  // Direction is carried by colour alone -- green where the figure landed on
-  // its good side, red where it landed on its bad one.
   if (hasPlan && kind === 'more') {
     barTone = actualCents >= plannedCents ? 'bg-pos' : 'bg-primary'
-    if (delta > 0) {
-      deltaText = brlSigned(delta)
-      deltaTone = 'text-pos'
-    } else if (delta < 0) {
-      deltaText = `${brl(plannedCents - actualCents)} ${remainingLabel ?? 'restante'}`
-    }
   } else if (hasPlan && kind === 'less') {
     barTone = actualCents > plannedCents ? 'bg-neg' : 'bg-primary'
-    if (delta > 0) {
-      deltaText = brlSigned(delta)
-      deltaTone = 'text-neg'
-    } else if (delta < 0) {
-      deltaText = `${brl(plannedCents - actualCents)} disponível`
-      deltaTone = 'text-pos'
-    }
   }
 
   return (
@@ -95,8 +89,11 @@ function Stat({
       </span>
 
       {/* A "more/less" figure with a plan draws the plan as the track it fills;
-          Saldo and any figure with no plan skip the bar -- a plan of zero has
-          no fraction to draw, and a 0% bar would look like real progress. */}
+          a plan of zero has no fraction to draw and a 0% bar would read as real
+          progress, so it is skipped. Saldo never has a bar either, but it does
+          carry a planned figure below, so it reserves the bar's height with an
+          empty spacer -- otherwise its "Planejado" block would ride up out of
+          line with the other boxes'. */}
       {hasPlan ? (
         <span
           className="h-1.5 w-full overflow-hidden rounded-full bg-surface-3"
@@ -107,19 +104,32 @@ function Stat({
             style={{ width: `${widthPercent(actualCents, plannedCents)}%` }}
           />
         </span>
+      ) : kind === 'net' ? (
+        <span className="h-1.5 w-full" aria-hidden="true" />
       ) : null}
 
-      <div className="flex flex-col gap-0.5 text-xs">
-        {hasPlan ? (
-          <span className="text-text-faint">
-            plano {brl(plannedCents)} · {percent(actualCents / plannedCents)}
+      {!hasPlan && kind !== 'net' ? (
+        <span className="text-xs text-text-faint">sem plano</span>
+      ) : null}
+
+      {/* Every box carries a second headline: the figure the plan set for it,
+          shown with the same label + big-figure treatment as the realised one
+          so the two read as a pair -- what happened vs. what was planned. */}
+      {plannedFigureCents !== undefined ? (
+        <div className="flex flex-col gap-1">
+          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Planejado
           </span>
-        ) : kind !== 'net' ? (
-          <span className="text-text-faint">sem plano</span>
-        ) : null}
-        {extraMeta ? <span className="text-text-faint">{extraMeta}</span> : null}
-        {deltaText ? <span className={cn('font-medium', deltaTone)}>{deltaText}</span> : null}
-      </div>
+          <span
+            className={cn(
+              'whitespace-nowrap font-mono text-lg font-semibold leading-tight tabular-nums sm:text-xl',
+              plannedFigureTone,
+            )}
+          >
+            {brl(plannedFigureCents)}
+          </span>
+        </div>
+      ) : null}
     </Card>
   )
 }
@@ -131,6 +141,15 @@ function Stat({
  * rather than as four bare totals.
  */
 export function MonthSummary({ view }: { view: MonthView }) {
+  // The balance the plan implies: the planned income applied against where the
+  // month stands right now. netCents is already the realised balance (negative
+  // when the month is in deficit), so adding the planned income answers "where
+  // would the balance land once the planned receita comes in?".
+  // Only shown once income is actually planned -- with no plan the line would
+  // just repeat the realised balance.
+  const plannedNetCents =
+    view.plannedIncomeCents > 0 ? view.plannedIncomeCents + view.netCents : undefined
+
   return (
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       <Stat
@@ -138,19 +157,12 @@ export function MonthSummary({ view }: { view: MonthView }) {
         kind="more"
         actualCents={view.incomeCents}
         plannedCents={view.plannedIncomeCents}
-        remainingLabel="a receber"
       />
       <Stat
         label="Investido"
         kind="more"
         actualCents={view.investedCents}
         plannedCents={view.plannedInvestedCents}
-        remainingLabel="a investir"
-        extraMeta={
-          view.investedShareOfIncome === null
-            ? undefined
-            : `${percent(view.investedShareOfIncome)} da renda`
-        }
       />
       <Stat
         label="Despesas"
@@ -158,7 +170,12 @@ export function MonthSummary({ view }: { view: MonthView }) {
         actualCents={view.expenseCents}
         plannedCents={view.plannedExpenseCents}
       />
-      <Stat label="Saldo" kind="net" actualCents={view.netCents} />
+      <Stat
+        label="Saldo"
+        kind="net"
+        actualCents={view.netCents}
+        plannedNetCents={plannedNetCents}
+      />
     </div>
   )
 }
