@@ -43,6 +43,13 @@ export const pluggyTransactionSchema = z.object({
   currencyCode: z.string().nullish(),
   date: z.string().min(1),
   type: z.enum(['DEBIT', 'CREDIT']),
+  // POSTED once the institution has settled the charge; PENDING while it is
+  // only an authorization -- typically a card purchase on a fatura that has
+  // not closed yet. The bank app shows these, so the household does too, but
+  // marked provisional: a PENDING amount can still move or be reversed, and
+  // Pluggy may re-post it under a different id. Nullish because not every
+  // connector supplies it, and an absent status reads as POSTED (see mapper).
+  status: z.enum(['POSTED', 'PENDING']).nullish(),
   category: z.string().nullish(),
   merchant: z
     .object({ name: z.string().nullish(), businessName: z.string().nullish() })

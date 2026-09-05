@@ -54,6 +54,12 @@ export type MonthTransaction = {
   last4: string | null
   /** `3/10` when this is an instalment, null otherwise. */
   installment: string | null
+  /**
+   * An authorization the bank has not settled yet -- an open-fatura card
+   * charge. It is counted in the figure like any other, so the month matches
+   * the bank app; the row is only marked provisional. See transaction.pending.
+   */
+  pending: boolean
 }
 
 export type MonthRow = {
@@ -210,6 +216,7 @@ export async function getMonthView(
         merchantNormalized: transactions.merchantNormalized,
         installmentNumber: transactions.installmentNumber,
         installmentTotal: transactions.installmentTotal,
+        pending: transactions.pending,
         accountName: accounts.name,
         accountType: accounts.type,
         institution: connections.institution,
@@ -260,6 +267,7 @@ export async function getMonthView(
       row.installmentNumber && row.installmentTotal
         ? `${row.installmentNumber}/${row.installmentTotal}`
         : null,
+    pending: row.pending,
   })
 
   // The detail rows, keyed the same way, so a row's list is drawn from exactly

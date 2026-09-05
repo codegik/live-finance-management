@@ -156,6 +156,46 @@ fly secrets list -a codegik-finance         # names only (values are write-only)
 fly status -a codegik-finance
 ```
 
+## 8. Querying the production database (troubleshooting)
+
+When a figure on screen looks wrong and you need to see the rows behind it, run
+SQL directly against production. **Never copy the production `DATABASE_URL` to
+your laptop** — the Postgres machine already has its own superuser password in
+`$OPERATOR_PASSWORD`, so run `psql` *inside* the DB machine and the credential
+never leaves it.
+
+Ad-hoc one-liner (mind the shell quoting — `$OPERATOR_PASSWORD` is expanded on
+the machine, so wrap the command in `sh -c` and keep it single-quoted locally):
+
+```sh
+fly ssh console -a codegik-finance-db \
+  -C 'sh -c "psql postgres://postgres:$OPERATOR_PASSWORD@localhost:5432/codegik_finance -Atc \"select count(*) from transaction\""'
+```
+
+For anything non-trivial, write the SQL to a local file and **pipe it over
+stdin** — this sidesteps all nested-quoting pain:
+
+```sh
+fly ssh console -a codegik-finance-db \
+  -C 'sh -c "psql postgres://postgres:$OPERATOR_PASSWORD@localhost:5432/codegik_finance"' \
+  < query.sql
+```
+
+Notes:
+- Database is `codegik_finance`; staging is `codegik-finance-db-staging`.
+- **Tables are singular** (`account`, `transaction`, `connection`, `budget`,
+  `category`, `household`, `merchant_rule`, `user`) and columns are snake_case
+  (`amount_cents`, `budget_month`, `budget_role`, `closing_day_override`, …).
+  The Drizzle models in `lib/db/schema.ts` are the source of truth.
+- A transaction's month on the dashboard is `coalesce(budget_month,
+  date_trunc('month', date)::date)`, **not** `date` — a card purchase is filed
+  in the month its fatura is *paid* (see `lib/domain/billing.ts`). Group by that
+  expression to reconcile against the app.
+- Read-only investigation needs no proxy. `fly proxy 15432:5432 -a
+  codegik-finance-db` also works if you want a local `psql`/GUI, but then you
+  need the password, which defeats the "credential stays on the machine" rule —
+  prefer the `ssh console` form above.
+
 ## Cost sketch (minimum, cheap)
 
 Per environment: 1 shared-cpu-1x/512MB web machine that suspends when idle +

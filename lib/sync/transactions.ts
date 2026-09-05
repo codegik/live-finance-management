@@ -60,6 +60,9 @@ export async function syncConnection(
             merchantNormalized: row.merchantNormalized,
             pluggyCategory: row.pluggyCategory,
             budgetRole: row.budgetRole,
+            // Re-read every sync so a charge that has since settled loses its
+            // provisional mark, and one newly authorized gains it.
+            pending: row.pending,
             installmentNumber: row.installmentNumber,
             installmentTotal: row.installmentTotal,
             updatedAt: new Date(),

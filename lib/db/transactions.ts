@@ -20,6 +20,8 @@ export type TransactionRow = {
   budgetRole: BudgetRole
   installmentNumber: number | null
   installmentTotal: number | null
+  /** An authorization the bank has not settled yet. See transaction.pending. */
+  pending: boolean
   accountName: string
   accountLast4: string | null
   institution: string
@@ -120,6 +122,7 @@ export async function listTransactions(
     budgetRole: transaction.budgetRole,
     installmentNumber: transaction.installmentNumber,
     installmentTotal: transaction.installmentTotal,
+    pending: transaction.pending,
     accountName: account.name,
     accountLast4: account.last4,
     institution: connection.institution,

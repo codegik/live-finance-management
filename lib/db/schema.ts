@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm'
 import {
   bigint,
+  boolean,
   date,
   index,
   integer,
@@ -293,6 +294,13 @@ export const transactions = pgTable(
     // because the connector already dates instalments 2..N by their fatura.
     installmentNumber: integer('installment_number'),
     installmentTotal: integer('installment_total'),
+    // True while this is only an authorization Pluggy has not seen settle --
+    // an open-fatura card charge. It still counts in every total, because it is
+    // money the household has already spent and its bank app already shows it;
+    // the UI only marks it provisional. Defaults false so a connector that
+    // omits Pluggy's `status` (and every row that predates this column) reads as
+    // settled, which is what the app assumed before pending was modelled.
+    pending: boolean('pending').notNull().default(false),
     // The month the household actually pays this, which is the month it
     // budgets it in. For a card purchase that is the month its fatura falls
     // due, not the month it was bought -- see lib/domain/billing.ts. Always a

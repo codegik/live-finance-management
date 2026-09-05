@@ -48,7 +48,16 @@ export function TransactionList({
                 className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border/60 py-3 last:border-b-0"
               >
                 <div className="flex min-w-0 flex-[2] basis-56 flex-col">
-                  <span className="truncate text-sm font-medium">{item.description}</span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="truncate text-sm font-medium">{item.description}</span>
+                    {/* A pending charge counts in the day total like any other;
+                        the chip only flags that the bank has not settled it. */}
+                    {item.pending ? (
+                      <span className="shrink-0 rounded-full bg-warn-dim px-1.5 py-0.5 text-[0.65rem] font-medium text-warn">
+                        pendente
+                      </span>
+                    ) : null}
+                  </span>
                   <span className="truncate text-xs text-muted-foreground">
                     {/* accountLast4 is null whenever Pluggy omits the account
                         number, so join only the parts that exist -- a missing

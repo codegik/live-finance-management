@@ -37,6 +37,10 @@ export function mapTransaction(
     // collapses branch variants that the descriptor alone would split.
     merchantNormalized: normalizeMerchant(merchantRaw ?? description),
     budgetRole: classifyRole(remote.category ?? null, { accountType: account.type, amountCents }),
+    // Only an explicit PENDING makes it pending; an absent or POSTED status is
+    // settled. A charge that later settles flips back to false on the next sync
+    // (see the upsert in lib/sync/transactions.ts).
+    pending: remote.status === 'PENDING',
     installmentNumber: installment?.number ?? null,
     installmentTotal: installment?.total ?? null,
   }

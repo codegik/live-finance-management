@@ -1,0 +1,1 @@
+ALTER TABLE "transaction" ADD COLUMN "pending" boolean DEFAULT false NOT NULL;

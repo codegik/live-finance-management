@@ -25,6 +25,8 @@ export type LedgerItem = {
   ownerName: string
   categoryId: string | null
   categoryName: string | null
+  /** An authorization the bank has not settled yet. See transaction.pending. */
+  pending: boolean
 }
 
 export type LedgerDay = { date: string; totalCents: number; items: LedgerItem[] }
@@ -131,6 +133,7 @@ export async function getLedgerView(
       ownerName: nameByUserId.get(row.ownerUserId) ?? 'Unknown',
       categoryId: row.categoryId,
       categoryName: row.categoryName,
+      pending: row.pending,
     })
     byDate.set(row.date, day)
   }

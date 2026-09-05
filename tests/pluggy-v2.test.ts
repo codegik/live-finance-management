@@ -154,6 +154,46 @@ it('records the instalment parts of the descriptor at map time', () => {
   expect(mapped).toMatchObject({ installmentNumber: 3, installmentTotal: 12 })
 })
 
+// --- pending vs settled ------------------------------------------------------
+
+it('marks a PENDING charge pending so the open fatura matches the bank app', () => {
+  const mapped = mapTransaction(
+    {
+      id: 'tx-open',
+      accountId: 'acc-credit-1',
+      description: 'ZAFFARI',
+      amount: 284.9,
+      amountInAccountCurrency: null,
+      currencyCode: 'BRL',
+      date: '2026-09-04T03:00:00.000Z',
+      type: 'DEBIT',
+      status: 'PENDING',
+    },
+    { id: 'internal-account-id', type: 'CREDIT' },
+  )
+
+  expect(mapped.pending).toBe(true)
+})
+
+it('treats POSTED and an absent status as settled', () => {
+  const base = {
+    id: 'tx-settled',
+    accountId: 'acc-credit-1',
+    description: 'ZAFFARI',
+    amount: 284.9,
+    amountInAccountCurrency: null,
+    currencyCode: 'BRL',
+    date: '2026-08-20T03:00:00.000Z',
+    type: 'DEBIT' as const,
+  }
+
+  expect(mapTransaction({ ...base, status: 'POSTED' }, { id: 'x', type: 'CREDIT' }).pending).toBe(
+    false,
+  )
+  // A connector that omits status must not leave every row provisional.
+  expect(mapTransaction(base, { id: 'x', type: 'CREDIT' }).pending).toBe(false)
+})
+
 // --- dates, against the shape real data actually uses -------------------------
 
 it('buckets a Sao Paulo midnight-padded date to that calendar day', () => {

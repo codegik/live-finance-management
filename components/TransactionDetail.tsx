@@ -84,7 +84,17 @@ export function TransactionDetail({
           {shortDate(transaction.date)}
         </span>
         <span className="min-w-0 flex-1">
-          <span className="block break-words text-sm font-medium">{transaction.description}</span>
+          <span className="block break-words text-sm font-medium">
+            {transaction.description}
+            {/* Marked, not hidden: a pending charge is real money the bank app
+                already shows, so it counts in the figure -- the badge only says
+                it may still move before the fatura closes. */}
+            {transaction.pending ? (
+              <span className="ml-1.5 align-middle rounded-full bg-warn-dim px-1.5 py-0.5 text-[0.65rem] font-medium text-warn">
+                pendente
+              </span>
+            ) : null}
+          </span>
           <span className="block text-xs text-text-faint">
             {account}
             {transaction.installment ? ` · parcela ${transaction.installment}` : null}
@@ -128,6 +138,9 @@ export function TransactionDetail({
             </div>
 
             <dl className="flex flex-col gap-2.5 text-sm">
+              {transaction.pending ? (
+                <DetailRow label="Situação" value="Pendente · ainda não fechada na fatura" />
+              ) : null}
               <DetailRow label="Data" value={fullDate(transaction.date)} />
               <DetailRow label="Conta" value={fullAccount} />
               <DetailRow label="Banco" value={transaction.institution} />
