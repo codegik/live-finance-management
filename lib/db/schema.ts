@@ -328,3 +328,41 @@ export const transactions = pgTable(
 
 export type Transaction = typeof transactions.$inferSelect
 export type NewTransaction = typeof transactions.$inferInsert
+
+/**
+ * A CLOSED credit-card fatura, straight from Pluggy's `/bills`. This is the
+ * authoritative total the bank says is owed for a cycle -- interest, IOF, fees
+ * and installments included -- which a sum of transactions can never reproduce
+ * (see lib/views/faturas.ts). The open cycle has no bill until it closes, so a
+ * card's most recent fatura may still be one the household is estimating from
+ * transactions; this table only ever holds the settled ones.
+ */
+export const bills = pgTable(
+  'bill',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    accountId: uuid('account_id')
+      .notNull()
+      .references(() => accounts.id, { onDelete: 'cascade' }),
+    pluggyBillId: text('pluggy_bill_id').notNull(),
+    // The month the fatura is PAID, first-of-month, derived from due_date. The
+    // same bucketing key the budgeting screens use for transactions
+    // (budget_month), so a card's fatura and its itemised charges line up on
+    // the same month without a second convention.
+    period: date('period').notNull(),
+    dueDate: date('due_date').notNull(),
+    closingDate: date('closing_date'),
+    totalAmountCents: bigint('total_amount_cents', { mode: 'number' }).notNull(),
+    minimumAmountCents: bigint('minimum_amount_cents', { mode: 'number' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('bill_pluggy_unique').on(t.pluggyBillId),
+    // The faturas view ranges by account and period.
+    index('bill_account_period_idx').on(t.accountId, t.period),
+  ],
+)
+
+export type Bill = typeof bills.$inferSelect
+export type NewBill = typeof bills.$inferInsert

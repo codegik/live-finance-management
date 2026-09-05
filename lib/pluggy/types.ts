@@ -64,6 +64,27 @@ export const pluggyTransactionSchema = z.object({
 
 export type PluggyTransaction = z.infer<typeof pluggyTransactionSchema>
 
+/**
+ * A closed credit-card statement (fatura), the authoritative total the bank
+ * says is owed for a cycle -- interest, IOF, fees and all, which the transaction
+ * feed never carries. `/bills` only ever returns CLOSED faturas: the open cycle
+ * has no bill until it closes, which is why the app still estimates that one
+ * from transactions. Verified against live Itau/Nubank payloads.
+ */
+export const pluggyBillSchema = z.object({
+  id: z.string().min(1),
+  dueDate: z.string().min(1),
+  // The day the cycle closed. Nullish because not every connector supplies it;
+  // the due date is what the fatura is filed under regardless.
+  billClosingDate: z.string().nullish(),
+  amount: z.number().finite().nullish(),
+  totalAmount: z.number().finite(),
+  totalAmountCurrencyCode: z.string().nullish(),
+  minimumPaymentAmount: z.number().finite().nullish(),
+})
+
+export type PluggyBill = z.infer<typeof pluggyBillSchema>
+
 export type PluggyConfig = {
   apiUrl: string
   clientId: string

@@ -1,7 +1,9 @@
 import { z } from 'zod'
 import {
+  pluggyBillSchema,
   pluggyTransactionSchema,
   type PluggyAccount,
+  type PluggyBill,
   type PluggyConfig,
   type PluggyItem,
   type PluggyTransaction,
@@ -31,6 +33,11 @@ export type PluggyClient = {
    * re-reading the full history safe.
    */
   listTransactions(accountId: string): Promise<PluggyTransaction[]>
+  /**
+   * Every CLOSED fatura for a credit-card account. A BANK account has none;
+   * callers guard on account type rather than relying on an empty result.
+   */
+  listBills(accountId: string): Promise<PluggyBill[]>
 }
 
 /**
@@ -136,6 +143,40 @@ export function createPluggyClient(config: PluggyConfig): PluggyClient {
         // only honest reading — and the page cap above bounds the other way.
         query = typeof body.next === 'string' && body.next.length > 0 ? body.next : null
       }
+
+      return results
+    },
+
+    async listBills(accountId) {
+      // Bills use page-based pagination (page/totalPages), not the cursor v2
+      // transactions use. A card has a handful of faturas, so this is one or
+      // two pages in practice; the MAX_TRANSACTION_PAGES cap still bounds a
+      // server that keeps claiming more.
+      const results: PluggyBill[] = []
+      let page = 1
+      let totalPages = 1
+
+      do {
+        if (page > MAX_TRANSACTION_PAGES) {
+          throw new Error(`PLUGGY_TOO_MANY_PAGES:bills:${accountId}:${page}`)
+        }
+
+        const body: { results: unknown; totalPages?: unknown } = await request(
+          `/bills?accountId=${encodeURIComponent(accountId)}&page=${page}`,
+        )
+
+        const parsed = z.array(pluggyBillSchema).safeParse(body.results)
+        if (!parsed.success) {
+          const detail = parsed.error.issues
+            .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
+            .join('; ')
+          throw new Error(`PLUGGY_INVALID_BILL:${accountId}:${detail}`)
+        }
+        results.push(...parsed.data)
+
+        totalPages = typeof body.totalPages === 'number' ? body.totalPages : page
+        page += 1
+      } while (page <= totalPages)
 
       return results
     },

@@ -5,6 +5,7 @@ import { daysBefore } from '@/lib/domain/dates'
 import { mapTransaction } from '@/lib/pluggy/mapper'
 import type { PluggyClient } from '@/lib/pluggy/client'
 import { refreshAccounts } from './accounts'
+import { syncBills } from './bills'
 import { recategorize } from './categorize'
 
 /**
@@ -126,6 +127,11 @@ export async function syncConnection(
         .returning({ id: transactions.id })
       pruned += deleted.length
     }
+
+    // The authoritative faturas for this card, alongside its transactions. A
+    // BANK account no-ops inside syncBills. Kept in the same loop so one sync
+    // leaves a card's transactions and its bills consistent with each other.
+    await syncBills(db, pluggy, account)
   }
 
   // Categorize what this sync touched. MANUAL rows are excluded inside

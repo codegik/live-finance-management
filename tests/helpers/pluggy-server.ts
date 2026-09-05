@@ -2,6 +2,7 @@ import { http, HttpResponse, type RequestHandler } from 'msw'
 import { setupServer } from 'msw/node'
 import { afterAll, afterEach, beforeAll } from 'vitest'
 import accounts from '../fixtures/pluggy/accounts.json'
+import bills from '../fixtures/pluggy/bills.json'
 import item from '../fixtures/pluggy/item.json'
 import transactions from '../fixtures/pluggy/transactions.json'
 
@@ -53,6 +54,14 @@ export function createPluggyServer(overrides: RequestHandler[] = []) {
         ? transactions.results.filter((tx) => tx.accountId === accountId)
         : transactions.results
       return HttpResponse.json({ results, next: null })
+    }),
+    // Bills use page-based pagination. Only the credit account carries faturas;
+    // every other account (and the bank one) returns an empty page, which is
+    // what syncBills expects for a non-card.
+    http.get(`${BASE}/bills`, ({ request }) => {
+      const accountId = new URL(request.url).searchParams.get('accountId')
+      const results = accountId === 'acc-credit-1' ? bills.results : []
+      return HttpResponse.json({ total: results.length, totalPages: 1, page: 1, results })
     }),
   )
 }

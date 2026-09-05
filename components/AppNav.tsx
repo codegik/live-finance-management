@@ -24,6 +24,7 @@ const SECTIONS: { title: string; items: Item[] }[] = [
     title: 'Planejamento',
     items: [
       { href: '/dashboard', label: 'Mês' },
+      { href: '/faturas', label: 'Faturas' },
       { href: '/year', label: 'Ano' },
       { href: '/budgets', label: 'Planejar' },
     ],

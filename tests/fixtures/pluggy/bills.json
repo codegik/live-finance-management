@@ -1,0 +1,23 @@
+{
+  "total": 2,
+  "totalPages": 1,
+  "page": 1,
+  "results": [
+    {
+      "id": "bill-aug",
+      "dueDate": "2026-08-10T00:00:00.000Z",
+      "billClosingDate": "2026-08-03T00:00:00.000Z",
+      "totalAmount": 4466.27,
+      "totalAmountCurrencyCode": "BRL",
+      "minimumPaymentAmount": 446.62
+    },
+    {
+      "id": "bill-jul",
+      "dueDate": "2026-07-10T00:00:00.000Z",
+      "billClosingDate": "2026-07-03T00:00:00.000Z",
+      "totalAmount": 5037.46,
+      "totalAmountCurrencyCode": "BRL",
+      "minimumPaymentAmount": 503.74
+    }
+  ]
+}
