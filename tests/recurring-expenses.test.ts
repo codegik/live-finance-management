@@ -253,6 +253,8 @@ it('projects an unfulfilled recurring item in a future month, at its fixed amoun
   expect(row.recurringLines.map((l) => l.title)).toEqual(['Netflix'])
   expect(row.recurringLines[0].amountCents).toBe(5500)
   expect(row.recurringLines[0].estimated).toBe(false)
+  // The day (15) resolved onto the viewed month (October), for the date column.
+  expect(row.recurringLines[0].date).toBe('2026-10-15')
   expect(row.recurringCents).toBe(5500)
   expect(row.actualCents).toBe(0)
   expect(month.recurringCents).toBe(5500)

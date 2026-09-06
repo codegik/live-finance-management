@@ -51,6 +51,7 @@ export function RecurringExpenseButton({
   defaultCadence = 'MONTHLY',
   defaultMatchType = 'CONTAINS',
   existing,
+  disabledReason,
 }: {
   trigger: Trigger
   /** The month being looked at, stored as the recurrence's anchor. */
@@ -66,6 +67,13 @@ export function RecurringExpenseButton({
   defaultMatchType?: 'EXACT' | 'CONTAINS'
   /** In edit mode, the (matchType, pattern) already stored, so Remove targets it. */
   existing?: { matchType: 'EXACT' | 'CONTAINS'; pattern: string } | null
+  /**
+   * When set on a `glyph`, the action is not offered and the marker is shown
+   * disabled with this text as its tooltip -- an instalment is a finite series
+   * the connector already schedules across its own months, so making it recur
+   * would forecast payments that never happen.
+   */
+  disabledReason?: string
 }) {
   const [open, setOpen] = useState(false)
   const [saveState, saveAction, saving] = useActionState(setRecurringExpenseAction, INITIAL)
@@ -85,13 +93,15 @@ export function RecurringExpenseButton({
     if (message) setOpen(false)
   }, [message])
 
-  // The glyph has no stable text to match on when the descriptor normalized
-  // away; keep the cluster's shape with a disabled marker, exactly as the
-  // apelido pencil does.
-  if (trigger === 'glyph' && !merchant) {
+  // The glyph is not offered when there is no stable text to match on (the
+  // descriptor normalized away) or when it would be wrong (an instalment). Keep
+  // the cluster's shape with a disabled marker, exactly as the apelido pencil
+  // does, and let the instalment case explain itself on hover.
+  if (trigger === 'glyph' && (!merchant || disabledReason)) {
     return (
       <span
-        aria-hidden
+        aria-hidden={!disabledReason}
+        title={disabledReason}
         className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-text-faint opacity-40"
       >
         <Repeat className="size-4 shrink-0" />

@@ -113,12 +113,19 @@ function widthPercent(actualCents: number, plannedCents: number): number {
  * modal takes them off the screen they were reading. It also costs no
  * JavaScript and survives a re-render with its own state.
  */
+/** `2026-10-21` as `21/10`, the same date column a real charge is read down. */
+function shortDate(date: string): string {
+  return `${date.slice(8, 10)}/${date.slice(5, 7)}`
+}
+
 /**
  * One projected line: a recurring expense the category is still waiting for
- * this month. It sits in the same list as the real charges but reads as a
- * forecast -- a `previsto` badge where a real charge shows `pendente`, its day
- * as `~15` because the exact date is not known until it lands, and a pencil to
- * edit or remove the definition behind it. Estimated (variable) amounts say so.
+ * this month. It is laid out like a real charge -- its expected date in the
+ * left column (the recurrence's day on the month being viewed), the name, and
+ * the amount on the right -- so a forecast and a settled charge read down the
+ * same columns. What sets it apart is the `previsto` badge where a real charge
+ * shows `pendente`, and a pencil to edit or remove the definition behind it.
+ * Estimated (variable) amounts say so on the second line.
  */
 function RecurringLineItem({
   line,
@@ -130,34 +137,40 @@ function RecurringLineItem({
   categories: { id: string; name: string }[]
 }) {
   return (
-    <li className="flex flex-wrap items-start gap-x-3 gap-y-1 py-2.5">
-      <div className="flex min-w-0 flex-[1_1_auto] flex-col">
-        <div className="flex items-center gap-2">
-          <span className="truncate text-[0.875rem] text-foreground">{line.title}</span>
-          <span className="shrink-0 rounded-full bg-accent-blue/15 px-1.5 py-0.5 text-[0.68rem] font-medium text-accent-blue">
-            previsto
+    <li className="flex flex-wrap items-start gap-x-3 gap-y-2 py-2.5">
+      <div className="flex min-w-0 flex-1 basis-full items-baseline gap-x-3 sm:basis-0">
+        <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
+          {shortDate(line.date)}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block break-words text-sm font-medium">
+            {line.title}
+            <span className="ml-1.5 align-middle rounded-full bg-accent-blue/15 px-1.5 py-0.5 text-[0.65rem] font-medium text-accent-blue">
+              previsto
+            </span>
           </span>
-        </div>
-        <span className="text-[0.74rem] text-text-faint">
-          {`~${line.dayOfMonth}`}
-          {line.estimated ? ' · estimado pela média' : ''}
+          {line.estimated ? (
+            <span className="block text-xs text-text-faint">estimado pela média</span>
+          ) : null}
+        </span>
+        <span className="shrink-0 font-mono text-sm tabular-nums text-muted-foreground">
+          {brl(line.amountCents)}
         </span>
       </div>
-      <span className="shrink-0 whitespace-nowrap font-mono text-[0.875rem] text-muted-foreground">
-        {brl(line.amountCents)}
-      </span>
-      <RecurringExpenseButton
-        trigger="edit"
-        period={period}
-        categories={categories}
-        merchant={line.pattern}
-        defaultTitle={line.title}
-        defaultCategoryId={line.categoryId}
-        defaultAmountCents={line.estimated ? null : line.amountCents}
-        defaultDay={line.dayOfMonth}
-        defaultMatchType={line.matchType}
-        existing={{ matchType: line.matchType, pattern: line.pattern }}
-      />
+      <div className="flex items-center gap-1.5">
+        <RecurringExpenseButton
+          trigger="edit"
+          period={period}
+          categories={categories}
+          merchant={line.pattern}
+          defaultTitle={line.title}
+          defaultCategoryId={line.categoryId}
+          defaultAmountCents={line.estimated ? null : line.amountCents}
+          defaultDay={line.dayOfMonth}
+          defaultMatchType={line.matchType}
+          existing={{ matchType: line.matchType, pattern: line.pattern }}
+        />
+      </div>
     </li>
   )
 }
@@ -236,7 +249,10 @@ function RowTransactions({
               {/* "Make recurring" is offered only on a charge that is not one
                   already: once a real charge fulfils a recurrence, the
                   recurrence is edited on a month where it is still a forecast,
-                  not here where it has already happened. */}
+                  not here where it has already happened. An instalment is never
+                  offered it -- it is a finite series the connector already dates
+                  across its own months, so recurring it would forecast payments
+                  that never come. */}
               {transaction.recurring ? null : (
                 <RecurringExpenseButton
                   trigger="glyph"
@@ -247,6 +263,11 @@ function RowTransactions({
                   defaultCategoryId={transaction.categoryId}
                   defaultAmountCents={transaction.amountCents}
                   defaultDay={Number(transaction.date.slice(8, 10))}
+                  disabledReason={
+                    transaction.installment
+                      ? 'Parcelas não são recorrentes — as próximas já aparecem nos meses seguintes.'
+                      : undefined
+                  }
                 />
               )}
             </div>

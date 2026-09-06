@@ -103,6 +103,13 @@ export type MonthRecurringLine = {
   /** The fixed amount, or the rolling average when the item is variable. */
   amountCents: number
   dayOfMonth: number
+  /**
+   * The day-of-month resolved onto the month being viewed, as a real
+   * 'YYYY-MM-DD' date -- the recurrence's day combined with the selected month,
+   * clamped to the month's length so a day-31 item never renders as 31/09. Lets
+   * a forecast sit in the same date column as a real charge.
+   */
+  date: string
   /** True when `amountCents` is a rolling-average estimate, not a fixed figure. */
   estimated: boolean
   /**
@@ -491,6 +498,9 @@ export async function getMonthView(
 
     for (const item of projecting) {
       const amountCents = projectedAmountCents(item, historyByItem.get(item.id) ?? [])
+      // The recurrence's day on the month being viewed, clamped to its length.
+      const day = Math.min(item.dayOfMonth, daysInMonth)
+      const date = `${period}-${String(day).padStart(2, '0')}`
       const list = recurringLinesByCategory.get(item.categoryId) ?? []
       list.push({
         id: item.id,
@@ -498,6 +508,7 @@ export async function getMonthView(
         categoryId: item.categoryId,
         amountCents,
         dayOfMonth: item.dayOfMonth,
+        date,
         estimated: item.amountCents === null,
         matchType: item.matchType,
         pattern: item.pattern,
