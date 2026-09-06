@@ -1,6 +1,7 @@
 import { RuleFromTransaction } from '@/app/(app)/settings/rules/RuleForms'
 import { MerchantLabelButton } from '@/components/MerchantLabelButton'
 import { PlanEditor } from '@/components/PlanEditor'
+import { RecurringExpenseButton } from '@/components/RecurringExpenseButton'
 import { TransactionCategoryPicker } from '@/components/TransactionCategoryPicker'
 import { TransactionDetail } from '@/components/TransactionDetail'
 import { Card } from '@/components/ui/card'
@@ -9,6 +10,7 @@ import { MORE_IS_BETTER } from '@/lib/domain/seed-categories'
 import type {
   MonthBucketDetail,
   MonthGroupView,
+  MonthRecurringLine,
   MonthRow,
   MonthStance,
 } from '@/lib/views/month'
@@ -111,12 +113,72 @@ function widthPercent(actualCents: number, plannedCents: number): number {
  * modal takes them off the screen they were reading. It also costs no
  * JavaScript and survives a re-render with its own state.
  */
+/**
+ * One projected line: a recurring expense the category is still waiting for
+ * this month. It sits in the same list as the real charges but reads as a
+ * forecast -- a `previsto` badge where a real charge shows `pendente`, its day
+ * as `~15` because the exact date is not known until it lands, and a pencil to
+ * edit or remove the definition behind it. Estimated (variable) amounts say so.
+ */
+function RecurringLineItem({
+  line,
+  period,
+  categories,
+}: {
+  line: MonthRecurringLine
+  period: string
+  categories: { id: string; name: string }[]
+}) {
+  return (
+    <li className="flex flex-wrap items-start gap-x-3 gap-y-1 py-2.5">
+      <div className="flex min-w-0 flex-[1_1_auto] flex-col">
+        <div className="flex items-center gap-2">
+          <span className="truncate text-[0.875rem] text-foreground">{line.title}</span>
+          <span className="shrink-0 rounded-full bg-accent-blue/15 px-1.5 py-0.5 text-[0.68rem] font-medium text-accent-blue">
+            previsto
+          </span>
+        </div>
+        <span className="text-[0.74rem] text-text-faint">
+          {`~${line.dayOfMonth}`}
+          {line.estimated ? ' · estimado pela média' : ''}
+        </span>
+      </div>
+      <span className="shrink-0 whitespace-nowrap font-mono text-[0.875rem] text-muted-foreground">
+        {brl(line.amountCents)}
+      </span>
+      <RecurringExpenseButton
+        trigger="edit"
+        period={period}
+        categories={categories}
+        merchant={line.pattern}
+        defaultTitle={line.title}
+        defaultCategoryId={line.categoryId}
+        defaultAmountCents={line.estimated ? null : line.amountCents}
+        defaultDay={line.dayOfMonth}
+        defaultMatchType={line.matchType}
+        existing={{ matchType: line.matchType, pattern: line.pattern }}
+      />
+    </li>
+  )
+}
+
 function RowTransactions({
   transactions,
   transactionCount,
   categories,
+  period,
+  recurringLines,
+  recurringCategoryId,
 }: MonthBucketDetail & {
   categories: { id: string; name: string }[]
+  /** The month on screen, seeded into any recurrence made from these rows. */
+  period: string
+  /** Forecast lines to draw under the real charges. Omitted for the buckets
+   *  (uncategorized/archived) that no category owns. */
+  recurringLines?: MonthRecurringLine[]
+  /** The category this list belongs to, so its "add recurring" row seeds it.
+   *  Omitted for the buckets, which have no single category. */
+  recurringCategoryId?: string
 }) {
   const hidden = transactionCount - transactions.length
 
@@ -143,10 +205,11 @@ function RowTransactions({
                 categories.find((category) => category.id === transaction.categoryId)?.name ?? null
               }
             />
-            {/* One connected action cluster, not two loose pills: the category
-                chip and the "make this a rule" glyph belong to the same row and
-                sit together. Both fix a miscategorised charge where it is seen,
-                one for this charge, one for the whole merchant.
+            {/* One connected action cluster, not loose pills: the category chip,
+                the apelido pencil, the "make this a rule" wand, and the "make
+                this recurring" repeat glyph belong to the same row and sit
+                together. Each fixes or records something about this charge where
+                it is read, not on another screen.
 
                 Category is per transaction, not per list: the "Não
                 categorizado" and "Categorias arquivadas" buckets are defined by
@@ -170,14 +233,48 @@ function RowTransactions({
                 categoryId={transaction.categoryId}
                 categories={categories}
               />
+              {/* "Make recurring" is offered only on a charge that is not one
+                  already: once a real charge fulfils a recurrence, the
+                  recurrence is edited on a month where it is still a forecast,
+                  not here where it has already happened. */}
+              {transaction.recurring ? null : (
+                <RecurringExpenseButton
+                  trigger="glyph"
+                  period={period}
+                  categories={categories}
+                  merchant={transaction.merchantNormalized}
+                  defaultTitle={transaction.label ?? undefined}
+                  defaultCategoryId={transaction.categoryId}
+                  defaultAmountCents={transaction.amountCents}
+                  defaultDay={Number(transaction.date.slice(8, 10))}
+                />
+              )}
             </div>
           </li>
+        ))}
+        {(recurringLines ?? []).map((line) => (
+          <RecurringLineItem
+            key={line.id}
+            line={line}
+            period={period}
+            categories={categories}
+          />
         ))}
       </ul>
       {hidden > 0 ? (
         <p className="mt-2 text-xs text-muted-foreground">
           Mostrando {transactions.length} de {transactionCount} lançamentos.
         </p>
+      ) : null}
+      {/* The "+ Adicionar recorrente" entry point, only under a real category
+          (a bucket has no single one to file it against). */}
+      {recurringCategoryId ? (
+        <RecurringExpenseButton
+          trigger="add"
+          period={period}
+          categories={categories}
+          defaultCategoryId={recurringCategoryId}
+        />
       ) : null}
     </>
   )
@@ -197,12 +294,16 @@ function Row({
   const tone = rowTone(row, stance)
   const planned = row.plannedCents
   const delta = planned === null ? null : row.actualCents - planned
+  // A row opens when there is something behind its figure to show: real
+  // charges, or the recurring bills it is still waiting on this month. A row
+  // with only a plan and nothing else stays a closed line.
+  const openable = row.transactionCount > 0 || row.recurringLines.length > 0
 
   return (
     <li>
       {/* A row with nothing behind it is not openable: an empty panel under a
           R$ 0,00 line answers a question nobody asked. */}
-      {row.transactionCount === 0 ? (
+      {!openable ? (
         <div className={ROW}>
         <span className={ROW_NAME}>{row.categoryName}</span>
         <span className={ROW_AMOUNTS}>
@@ -244,6 +345,11 @@ function Row({
               transfer were an obligation. */}
           {!MORE_IS_BETTER[row.group] && row.committedCents > 0 ? (
             <span>{brl(row.committedCents)} já comprometido</span>
+          ) : null}
+          {/* What the row still expects from its recurring bills this month --
+              a forecast, so it reads apart from spent and committed money. */}
+          {row.recurringCents > 0 ? (
+            <span className="text-accent-blue">previsto {brl(row.recurringCents)}</span>
           ) : null}
           {row.plannedFrom ? <span>plano herdado de {row.plannedFrom}</span> : null}
         </span>
@@ -299,6 +405,9 @@ function Row({
             transactions={row.transactions}
             transactionCount={row.transactionCount}
             categories={categories}
+            period={period}
+            recurringLines={row.recurringLines}
+            recurringCategoryId={row.categoryId}
           />
         </details>
       )}
@@ -386,6 +495,7 @@ export function MonthBlock({
                   transactions={item.transactions}
                   transactionCount={item.transactionCount}
                   categories={categories}
+                  period={period}
                 />
               </details>
             )}

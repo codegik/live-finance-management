@@ -6,11 +6,14 @@ import { requireSession } from '@/lib/auth/session'
 import { clearBudget, setBudget } from '@/lib/db/budgets'
 import { getDb } from '@/lib/db/client'
 import { clearMerchantLabel, setMerchantLabel } from '@/lib/db/merchant-labels'
+import { clearRecurringExpense, setRecurringExpense } from '@/lib/db/recurring-expenses'
 import { setTransactionCategory } from '@/lib/db/transactions'
 import { parseReais } from '@/lib/domain/parse-reais'
 import {
   EMPTY_LABEL_ERROR,
+  EMPTY_RECURRING_TITLE_ERROR,
   INVALID_AMOUNT_ERROR,
+  INVALID_DAY_ERROR,
   INVALID_PERIOD_ERROR,
   LABEL_CLEARED_MESSAGE,
   LABEL_SAVED_MESSAGE,
@@ -19,6 +22,10 @@ import {
   PLAN_CLEARED_MESSAGE,
   PLAN_SAVED_MESSAGE,
   type PlanState,
+  RECURRING_CLEARED_MESSAGE,
+  RECURRING_NO_MERCHANT_ERROR,
+  RECURRING_SAVED_MESSAGE,
+  type RecurringExpenseState,
   type RecategorizeState,
   UNKNOWN_CATEGORY_ERROR,
   UNKNOWN_MERCHANT_ERROR,
@@ -153,6 +160,110 @@ export async function clearMerchantLabelAction(
   revalidatePath('/year')
 
   return { error: null, message: LABEL_CLEARED_MESSAGE }
+}
+
+const cadence = z.enum(['MONTHLY', 'ANNUAL'])
+
+/**
+ * Records (or replaces) a recurring expense, matched to real charges the same
+ * way an apelido is: an EXACT or CONTAINS pattern normalized in the db layer.
+ * Seeded from the charge it was created on, or typed fresh under a category.
+ *
+ * An empty amount is not zero -- it is "variável", which the projection reads
+ * as "estimate from the rolling average". The day is bounded 1..31; the anchor
+ * is the month the household is looking at, stored as its first day.
+ */
+export async function setRecurringExpenseAction(
+  _prev: RecurringExpenseState,
+  formData: FormData,
+): Promise<RecurringExpenseState> {
+  const session = await requireSession()
+
+  const parsedMatch = matchType.safeParse(String(formData.get('matchType') ?? ''))
+  const parsedCadence = cadence.safeParse(String(formData.get('cadence') ?? ''))
+  const pattern = String(formData.get('pattern') ?? '')
+  const title = String(formData.get('title') ?? '')
+  const categoryId = String(formData.get('categoryId') ?? '')
+  const period = String(formData.get('period') ?? '')
+
+  // A bad match type or cadence can only come from a tampered form; fold both
+  // into the same "nothing to match on" case the label action uses.
+  if (!parsedMatch.success || !parsedCadence.success || !pattern.trim()) {
+    return { error: RECURRING_NO_MERCHANT_ERROR, message: null }
+  }
+  if (!id.safeParse(categoryId).success) {
+    return { error: UNKNOWN_CATEGORY_ERROR, message: null }
+  }
+  if (!PERIOD.test(period)) return { error: INVALID_PERIOD_ERROR, message: null }
+  if (!title.trim()) return { error: EMPTY_RECURRING_TITLE_ERROR, message: null }
+
+  const dayOfMonth = Number(formData.get('dayOfMonth'))
+  if (!Number.isInteger(dayOfMonth) || dayOfMonth < 1 || dayOfMonth > 31) {
+    return { error: INVALID_DAY_ERROR, message: null }
+  }
+
+  let amountCents: number | null
+  try {
+    amountCents = parseReais(String(formData.get('amount') ?? ''))
+  } catch {
+    return { error: INVALID_AMOUNT_ERROR, message: null }
+  }
+
+  const { ok } = await setRecurringExpense(getDb(), session.householdId, {
+    matchType: parsedMatch.data,
+    pattern,
+    title,
+    categoryId,
+    amountCents,
+    dayOfMonth,
+    cadence: parsedCadence.data,
+    anchorMonth: `${period}-01`,
+  })
+  // ok is false only when the pattern normalized away to nothing.
+  if (!ok) return { error: RECURRING_NO_MERCHANT_ERROR, message: null }
+
+  // A recurrence names its merchant, so it also gives it that apelido: the same
+  // (matchType, pattern) becomes a merchant label, and the title the household
+  // typed shows for this merchant everywhere -- the ledger, the inbox, and the
+  // real charge that later fulfils the recurrence. Keyed identically, so it
+  // upserts in place rather than fighting the recurrence's own name.
+  await setMerchantLabel(getDb(), session.householdId, {
+    matchType: parsedMatch.data,
+    pattern,
+    label: title,
+  })
+
+  // Both the plan screens and the merchant-name screens just changed.
+  revalidatePath('/dashboard')
+  revalidatePath('/year')
+  revalidatePath('/ledger')
+  revalidatePath('/inbox')
+
+  return { error: null, message: RECURRING_SAVED_MESSAGE }
+}
+
+/** Removes a recurring expense, so its category stops forecasting it. */
+export async function clearRecurringExpenseAction(
+  _prev: RecurringExpenseState,
+  formData: FormData,
+): Promise<RecurringExpenseState> {
+  const session = await requireSession()
+
+  const parsedMatch = matchType.safeParse(String(formData.get('matchType') ?? ''))
+  const pattern = String(formData.get('pattern') ?? '')
+  if (!parsedMatch.success || !pattern.trim()) {
+    return { error: RECURRING_NO_MERCHANT_ERROR, message: null }
+  }
+
+  await clearRecurringExpense(getDb(), session.householdId, {
+    matchType: parsedMatch.data,
+    pattern,
+  })
+
+  revalidatePath('/dashboard')
+  revalidatePath('/year')
+
+  return { error: null, message: RECURRING_CLEARED_MESSAGE }
 }
 
 /**

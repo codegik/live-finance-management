@@ -24,3 +24,14 @@ export const LABEL_SAVED_MESSAGE = 'Apelido salvo.'
 export const LABEL_CLEARED_MESSAGE = 'Apelido removido.'
 export const EMPTY_LABEL_ERROR = 'Digite um apelido.'
 export const UNKNOWN_MERCHANT_ERROR = 'Esse lançamento não tem um estabelecimento para apelidar.'
+
+/** State for the recurring-expense modal (set / clear a repeating expense). */
+export type RecurringExpenseState = { error: string | null; message: string | null }
+
+export const RECURRING_SAVED_MESSAGE = 'Recorrência salva.'
+export const RECURRING_CLEARED_MESSAGE = 'Recorrência removida.'
+export const EMPTY_RECURRING_TITLE_ERROR = 'Dê um nome à recorrência.'
+export const INVALID_DAY_ERROR = 'Dia inválido.'
+/** Reused for a pattern that has nothing to match on: same cause as a label. */
+export const RECURRING_NO_MERCHANT_ERROR =
+  'Esse lançamento não tem um estabelecimento para tornar recorrente.'

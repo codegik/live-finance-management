@@ -442,3 +442,68 @@ export const merchantLabels = pgTable(
 
 export type MerchantLabel = typeof merchantLabels.$inferSelect
 export type NewMerchantLabel = typeof merchantLabels.$inferInsert
+
+/**
+ * How often a recurring expense repeats. MONTHLY covers almost everything a
+ * household plans against; ANNUAL exists so once-a-year bills (IPVA, seguro)
+ * can be recorded and projected into the single month they land, rather than
+ * being forgotten between Januaries.
+ */
+export const recurringCadenceEnum = pgEnum('recurring_cadence', ['MONTHLY', 'ANNUAL'])
+
+/**
+ * A named expense the household expects to repeat, matched to real charges the
+ * same way a merchant_label is: a normalized (match type, pattern) against
+ * merchant_normalized. That reuse is deliberate -- the pattern IS the link, so
+ * when a real charge matching it lands in a month, that month's recurrence is
+ * fulfilled and no projected line is drawn (no double count). The title is the
+ * household's own name for it, editable exactly like an apelido.
+ *
+ * amount_cents is nullable: a fixed bill stores its amount, a variable one
+ * (electricity, groceries) stores null and is projected from the rolling
+ * average of the charges its pattern has matched. day_of_month and cadence say
+ * when to expect it; anchor_month/end_month bound the window it projects over.
+ *
+ * No bank scope, matching merchant_label and for the same reason: a household
+ * expects the bill whichever card it lands on.
+ */
+export const recurringExpenses = pgTable(
+  'recurring_expense',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    householdId: uuid('household_id')
+      .notNull()
+      .references(() => households.id, { onDelete: 'cascade' }),
+    matchType: ruleMatchTypeEnum('match_type').notNull(),
+    // Stored already normalized, exactly as merchant_label.pattern is, so the
+    // match is symmetrical with the transaction's merchant_normalized.
+    pattern: text('pattern').notNull(),
+    title: text('title').notNull(),
+    categoryId: uuid('category_id')
+      .notNull()
+      .references(() => categories.id, { onDelete: 'cascade' }),
+    // Null means variable: project the rolling average of matched charges
+    // instead of a stored figure.
+    amountCents: bigint('amount_cents', { mode: 'number' }),
+    dayOfMonth: integer('day_of_month').notNull(),
+    cadence: recurringCadenceEnum('cadence').notNull().default('MONTHLY'),
+    // First of the month this starts projecting from. For ANNUAL, its month is
+    // the month of the year the bill lands.
+    anchorMonth: date('anchor_month').notNull(),
+    // First of the last month to project, or null to project indefinitely.
+    endMonth: date('end_month'),
+    active: boolean('active').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // One recurring item per (match type, pattern) per household: retyping the
+    // same pattern updates it in place rather than stacking two definitions
+    // that would both claim the same charges.
+    uniqueIndex('recurring_expense_unique').on(t.householdId, t.matchType, t.pattern),
+    index('recurring_expense_household_idx').on(t.householdId),
+  ],
+)
+
+export type RecurringExpense = typeof recurringExpenses.$inferSelect
+export type NewRecurringExpense = typeof recurringExpenses.$inferInsert

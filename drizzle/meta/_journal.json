@@ -134,6 +134,13 @@
       "when": 1788649590434,
       "tag": "0018_large_fabian_cortez",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1788650993194,
+      "tag": "0019_safe_thunderbolts",
+      "breakpoints": true
     }
   ]
 }

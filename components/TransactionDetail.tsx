@@ -98,6 +98,14 @@ export function TransactionDetail({
                 pendente
               </span>
             ) : null}
+            {/* This charge IS a recurrence's occurrence this month -- it stood in
+                for the forecast, so it wears the same accent as a `previsto`
+                line to tie the two together. */}
+            {transaction.recurring ? (
+              <span className="ml-1.5 align-middle rounded-full bg-accent-blue/15 px-1.5 py-0.5 text-[0.65rem] font-medium text-accent-blue">
+                recorrente
+              </span>
+            ) : null}
           </span>
           <span className="block text-xs text-text-faint">
             {account}

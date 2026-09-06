@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, lte } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray, lt, lte } from 'drizzle-orm'
 import { budgetMonthSql } from '@/lib/db/budget-month-sql'
 import { accounts, connections, transactions } from '@/lib/db/schema'
 import { listBudgets } from '@/lib/db/budgets'
@@ -6,6 +6,13 @@ import { listCategories } from '@/lib/db/categories'
 import type { Db } from '@/lib/db/client'
 import { getHouseholdHealth, type HouseholdHealth } from '@/lib/db/health'
 import { listMerchantLabels, resolveLabel } from '@/lib/db/merchant-labels'
+import {
+  listRecurringExpenses,
+  matchesRecurring,
+  projectedAmountCents,
+  projectsInPeriod,
+  resolveRecurring,
+} from '@/lib/db/recurring-expenses'
 import {
   daysInPeriod,
   groupBudgetsByCategory,
@@ -68,6 +75,43 @@ export type MonthTransaction = {
    * the bank app; the row is only marked provisional. See transaction.pending.
    */
   pending: boolean
+  /**
+   * This real charge fulfils a recurring expense: its pattern matches an active
+   * recurrence in its category. It IS this month's occurrence, so the forecast
+   * line is suppressed and this charge's own amount and date stand in its place
+   * -- the "override the recurrence for this month" the household expects. The
+   * row is badged `recorrente`, and its "make recurring" action is withheld:
+   * the recurrence is edited on a month where it is still only a forecast.
+   */
+  recurring: boolean
+}
+
+/**
+ * One expected charge a category is still waiting for this month: a recurring
+ * expense whose pattern has not been fulfilled by a real transaction yet. It is
+ * a forecast, not spend -- it never enters `actualCents` or `expenseCents`, only
+ * the row's `recurringCents`, so the household sees what is coming without the
+ * headline claiming the money already left. Drawn only for the current and
+ * future months; a closed month is not still waiting for anything.
+ */
+export type MonthRecurringLine = {
+  /** The recurring_expense id, so a line can be edited or dismissed in place. */
+  id: string
+  /** The household's name for it, shown where a real charge shows its merchant. */
+  title: string
+  categoryId: string
+  /** The fixed amount, or the rolling average when the item is variable. */
+  amountCents: number
+  dayOfMonth: number
+  /** True when `amountCents` is a rolling-average estimate, not a fixed figure. */
+  estimated: boolean
+  /**
+   * The match key behind this line, carried so the row can edit or remove the
+   * definition in place -- the modal reuses them exactly as the apelido modal
+   * reuses a label's (matchType, pattern).
+   */
+  matchType: 'EXACT' | 'CONTAINS'
+  pattern: string
 }
 
 export type MonthRow = {
@@ -102,6 +146,13 @@ export type MonthRow = {
   transactions: MonthTransaction[]
   /** True total behind `transactions`, which may be longer than the list. */
   transactionCount: number
+  /**
+   * Recurring expenses expected this month that no real charge has fulfilled
+   * yet. Empty in a past month, and empty in any month once its charge lands.
+   */
+  recurringLines: MonthRecurringLine[]
+  /** Sum of `recurringLines` -- what this row is still expected to add. */
+  recurringCents: number
 }
 
 /**
@@ -125,6 +176,8 @@ export type MonthGroupView = {
   actualCents: number
   plannedCents: number
   paceCents: number
+  /** Sum of the block's rows' `recurringCents` -- expected but not yet arrived. */
+  recurringCents: number
 }
 
 export type MonthView = {
@@ -158,6 +211,13 @@ export type MonthView = {
   pendingFaturaCents: number
   /** One entry per card contributing to `pendingFaturaCents`. */
   pendingFaturaLines: PendingFaturaLine[]
+  /**
+   * Recurring expenses expected across the whole month that no real charge has
+   * fulfilled yet -- the sum of every row's `recurringCents`. A forecast the
+   * dashboard can surface as "expected"; deliberately NOT folded into
+   * `expenseCents`, which only ever holds money that actually left.
+   */
+  recurringCents: number
   /** SPEND this month that no drawn row accounts for: archived categories. */
   archivedSpentCents: number
   /** INCOME this month that no Receita row accounts for: uncategorized or archived. */
@@ -193,6 +253,21 @@ function stanceOf(period: string, current: string): MonthStance {
   return 'CURRENT'
 }
 
+/** The 'YYYY-MM' `n` months before `period`, for bounding the rolling-average
+ *  history window a variable recurring item is estimated from. */
+function monthsBefore(period: string, n: number): string {
+  const [year, month] = period.split('-').map(Number)
+  const index = year * 12 + (month - 1) - n
+  const y = Math.floor(index / 12)
+  const m = (index % 12) + 1
+  return `${y}-${String(m).padStart(2, '0')}`
+}
+
+/** How many months of history the rolling average of a variable item may look
+ *  back over. Twelve covers a monthly item's last-N window comfortably and lets
+ *  an annual item find its previous occurrence. */
+const RECURRING_HISTORY_MONTHS = 12
+
 /**
  * One month of the household's sheet: every category, what was planned for it
  * and what actually happened, grouped into the four blocks.
@@ -216,7 +291,7 @@ export async function getMonthView(
 
   const { start: monthStart, end: monthEnd } = monthBounds(period)
 
-  const [totals, detail, categories, budgetRows, health, pendingFaturaLines, labels] =
+  const [totals, detail, categories, budgetRows, health, pendingFaturaLines, labels, recurringItems] =
     await Promise.all([
     // Both roles in one query. Receita reads INCOME rows; every other block
     // reads SPEND. See GROUP_BUDGET_ROLE.
@@ -258,6 +333,7 @@ export async function getMonthView(
     getHouseholdHealth(db, householdId, opts),
     getPendingFaturaLines(db, householdId, period),
     listMerchantLabels(db, householdId),
+    listRecurringExpenses(db, householdId),
   ])
 
   const elapsedDays =
@@ -290,6 +366,11 @@ export async function getMonthView(
         ? `${row.installmentNumber}/${row.installmentTotal}`
         : null,
     pending: row.pending,
+    // A SPEND charge whose merchant matches a recurrence in its own category is
+    // that recurrence's occurrence this month. Income rows never carry one.
+    recurring:
+      row.budgetRole === 'SPEND' &&
+      resolveRecurring(recurringItems, row.merchantNormalized, row.categoryId) !== null,
   })
 
   // The detail rows, keyed the same way, so a row's list is drawn from exactly
@@ -347,6 +428,84 @@ export async function getMonthView(
   )
   const budgetsByCategory = groupBudgetsByCategory(budgetRows)
 
+  // The recurring lines each category is still waiting for this month. A
+  // recurrence is drawn only when the month is not closed (a past month is not
+  // waiting for anything), it is due this period (cadence + window), and no real
+  // charge in its category has fulfilled its pattern -- the fulfilment test is
+  // the same EXACT/CONTAINS match a label uses, so a landed charge and its
+  // forecast never both count.
+  const recurringLinesByCategory = new Map<string, MonthRecurringLine[]>()
+  if ((stance === 'CURRENT' || stance === 'FUTURE') && recurringItems.length > 0) {
+    // Every normalized merchant filed on a category this month, from the full
+    // detail set (not the display-capped lists), so a fulfilment far down a long
+    // category is still seen.
+    const merchantsByCategory = new Map<string, string[]>()
+    for (const row of detail) {
+      if (row.budgetRole !== 'SPEND' || !row.categoryId || !row.merchantNormalized) continue
+      const list = merchantsByCategory.get(row.categoryId) ?? []
+      list.push(row.merchantNormalized)
+      merchantsByCategory.set(row.categoryId, list)
+    }
+
+    const projecting = recurringItems.filter((item) => {
+      if (!projectsInPeriod(item, period)) return false
+      const merchants = merchantsByCategory.get(item.categoryId) ?? []
+      return !merchants.some((merchant) => matchesRecurring(item, merchant))
+    })
+
+    // A variable item (no fixed amount) is projected from the rolling average of
+    // the charges its pattern matched in prior months. Load that history once,
+    // and only when at least one such item needs it.
+    const historyByItem = new Map<string, number[]>()
+    const variable = projecting.filter((item) => item.amountCents === null)
+    if (variable.length > 0) {
+      const windowStart = monthBounds(monthsBefore(period, RECURRING_HISTORY_MONTHS)).start
+      const past = await db
+        .select({
+          categoryId: transactions.categoryId,
+          merchantNormalized: transactions.merchantNormalized,
+          amountCents: transactions.amountCents,
+        })
+        .from(transactions)
+        .innerJoin(accounts, eq(transactions.accountId, accounts.id))
+        .innerJoin(connections, eq(accounts.connectionId, connections.id))
+        .where(
+          and(
+            eq(connections.householdId, householdId),
+            eq(transactions.budgetRole, 'SPEND'),
+            gte(budgetMonthSql, windowStart),
+            lt(budgetMonthSql, monthStart),
+          ),
+        )
+        .orderBy(desc(budgetMonthSql), desc(transactions.date), desc(transactions.id))
+      for (const item of variable) {
+        const amounts: number[] = []
+        for (const row of past) {
+          if (row.categoryId !== item.categoryId) continue
+          if (!matchesRecurring(item, row.merchantNormalized)) continue
+          amounts.push(row.amountCents)
+        }
+        historyByItem.set(item.id, amounts)
+      }
+    }
+
+    for (const item of projecting) {
+      const amountCents = projectedAmountCents(item, historyByItem.get(item.id) ?? [])
+      const list = recurringLinesByCategory.get(item.categoryId) ?? []
+      list.push({
+        id: item.id,
+        title: item.title,
+        categoryId: item.categoryId,
+        amountCents,
+        dayOfMonth: item.dayOfMonth,
+        estimated: item.amountCents === null,
+        matchType: item.matchType,
+        pattern: item.pattern,
+      })
+      recurringLinesByCategory.set(item.categoryId, list)
+    }
+  }
+
   const rows: MonthRow[] = categories.map((category) => {
     const group = category.group
     const role = GROUP_BUDGET_ROLE[group]
@@ -360,6 +519,9 @@ export async function getMonthView(
 
     const budget = resolveBudget(budgetsByCategory.get(category.id) ?? [], period)
     const detailKey = `${category.id}:${role}`
+
+    const recurringLines = recurringLinesByCategory.get(category.id) ?? []
+    const recurringCents = recurringLines.reduce((sum, line) => sum + line.amountCents, 0)
 
     return {
       categoryId: category.id,
@@ -384,15 +546,20 @@ export async function getMonthView(
             : pace({ variableCents, committedCents, dayOfMonth: elapsedDays, daysInPeriod: daysInMonth }),
       transactions: detailByCategoryRole.get(detailKey) ?? [],
       transactionCount: countByCategoryRole.get(detailKey) ?? 0,
+      recurringLines,
+      recurringCents,
     }
   })
 
   // A category with nothing filed against it this month and no plan to hold it
   // open is a dead line -- "R$ 0,00 · sem plano" -- so it is dropped. A row
   // with a plan stays even at zero: an empty plan is the planned-vs-actual the
-  // household set it up to watch, and hiding it would erase the intent.
+  // household set it up to watch, and hiding it would erase the intent. A row
+  // that is only waiting on a recurring charge stays too: an expected bill with
+  // nothing filed yet is exactly what a future month exists to show.
   const visibleRows = rows.filter(
-    (row) => row.transactionCount > 0 || row.plannedCents !== null,
+    (row) =>
+      row.transactionCount > 0 || row.plannedCents !== null || row.recurringLines.length > 0,
   )
 
   const groups: MonthGroupView[] = CATEGORY_GROUPS.map((group) => {
@@ -404,6 +571,7 @@ export async function getMonthView(
       actualCents: groupRows.reduce((sum, row) => sum + row.actualCents, 0),
       plannedCents: groupRows.reduce((sum, row) => sum + (row.plannedCents ?? 0), 0),
       paceCents: groupRows.reduce((sum, row) => sum + row.paceCents, 0),
+      recurringCents: groupRows.reduce((sum, row) => sum + row.recurringCents, 0),
     }
   })
 
@@ -452,6 +620,7 @@ export async function getMonthView(
     expenseCents,
     pendingFaturaCents,
     pendingFaturaLines,
+    recurringCents: groups.reduce((sum, group) => sum + group.recurringCents, 0),
     archivedSpentCents:
       totalSpentCents - drawnSpendCents - (uncategorized?.spentCents ?? 0),
     unassignedIncomeCents: totalIncomeCents - actual('RECEITA'),
