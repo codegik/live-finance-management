@@ -103,6 +103,14 @@ it('projectsInPeriod honours the window and the cadence', () => {
   expect(projectsInPeriod(annual, '2026-01')).toBe(true)
   expect(projectsInPeriod(annual, '2026-02')).toBe(false)
   expect(projectsInPeriod(annual, '2027-01')).toBe(true)
+
+  // ONCE lands in its anchor month only -- never before, never the month after,
+  // and never the same month a year on.
+  const once = matcher({ cadence: 'ONCE', anchorMonth: '2026-08-01', endMonth: null })
+  expect(projectsInPeriod(once, '2026-07')).toBe(false)
+  expect(projectsInPeriod(once, '2026-08')).toBe(true)
+  expect(projectsInPeriod(once, '2026-09')).toBe(false)
+  expect(projectsInPeriod(once, '2027-08')).toBe(false)
 })
 
 // --- the rolling average ---------------------------------------------------

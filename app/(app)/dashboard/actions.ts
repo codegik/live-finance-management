@@ -162,7 +162,7 @@ export async function clearMerchantLabelAction(
   return { error: null, message: LABEL_CLEARED_MESSAGE }
 }
 
-const cadence = z.enum(['MONTHLY', 'ANNUAL'])
+const cadence = z.enum(['MONTHLY', 'ANNUAL', 'ONCE'])
 
 /**
  * Records (or replaces) a recurring expense, matched to real charges the same

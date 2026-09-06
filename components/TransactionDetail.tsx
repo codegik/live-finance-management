@@ -90,14 +90,6 @@ export function TransactionDetail({
         <span className="min-w-0 flex-1">
           <span className="block break-words text-sm font-medium">
             {displayName}
-            {/* Marked, not hidden: a pending charge is real money the bank app
-                already shows, so it counts in the figure -- the badge only says
-                it may still move before the fatura closes. */}
-            {transaction.pending ? (
-              <span className="ml-1.5 align-middle rounded-full bg-warn-dim px-1.5 py-0.5 text-[0.65rem] font-medium text-warn">
-                pendente
-              </span>
-            ) : null}
             {/* This charge IS a recurrence's occurrence this month -- it stood in
                 for the forecast, so it wears the same accent as a `previsto`
                 line to tie the two together. */}

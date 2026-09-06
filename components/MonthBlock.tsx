@@ -167,6 +167,7 @@ function RecurringLineItem({
           defaultCategoryId={line.categoryId}
           defaultAmountCents={line.estimated ? null : line.amountCents}
           defaultDay={line.dayOfMonth}
+          defaultCadence={line.cadence}
           defaultMatchType={line.matchType}
           existing={{ matchType: line.matchType, pattern: line.pattern }}
         />

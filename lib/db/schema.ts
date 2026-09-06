@@ -447,9 +447,11 @@ export type NewMerchantLabel = typeof merchantLabels.$inferInsert
  * How often a recurring expense repeats. MONTHLY covers almost everything a
  * household plans against; ANNUAL exists so once-a-year bills (IPVA, seguro)
  * can be recorded and projected into the single month they land, rather than
- * being forgotten between Januaries.
+ * being forgotten between Januaries. ONCE does not repeat at all -- it projects
+ * a single expected charge in its anchor month, for a one-off the household
+ * wants planned (and de-duped against the real charge) without recurring.
  */
-export const recurringCadenceEnum = pgEnum('recurring_cadence', ['MONTHLY', 'ANNUAL'])
+export const recurringCadenceEnum = pgEnum('recurring_cadence', ['MONTHLY', 'ANNUAL', 'ONCE'])
 
 /**
  * A named expense the household expects to repeat, matched to real charges the

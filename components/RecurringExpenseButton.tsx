@@ -63,7 +63,7 @@ export function RecurringExpenseButton({
   defaultCategoryId?: string | null
   defaultAmountCents?: number | null
   defaultDay?: number
-  defaultCadence?: 'MONTHLY' | 'ANNUAL'
+  defaultCadence?: 'MONTHLY' | 'ANNUAL' | 'ONCE'
   defaultMatchType?: 'EXACT' | 'CONTAINS'
   /** In edit mode, the (matchType, pattern) already stored, so Remove targets it. */
   existing?: { matchType: 'EXACT' | 'CONTAINS'; pattern: string } | null
@@ -167,7 +167,8 @@ export function RecurringExpenseButton({
             <p className="mb-4 text-sm text-muted-foreground">
               A recorrência aparece como um lançamento previsto no mês, até um lançamento real que
               casa com o padrão chegar — aí ela some para não contar duas vezes. Deixe o valor em
-              branco para uma conta que varia: a previsão usa a média dos últimos meses.
+              branco para uma conta que varia: a previsão usa a média dos últimos meses. Use a
+              frequência <strong>única</strong> para prever um gasto só neste mês, sem repetir.
             </p>
 
             <form action={saveAction} className="flex flex-col gap-4">
@@ -248,6 +249,7 @@ export function RecurringExpenseButton({
                   <Select name="cadence" defaultValue={defaultCadence}>
                     <option value="MONTHLY">mensal</option>
                     <option value="ANNUAL">anual</option>
+                    <option value="ONCE">única</option>
                   </Select>
                 </Label>
               </div>

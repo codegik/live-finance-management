@@ -119,6 +119,9 @@ export type MonthRecurringLine = {
    */
   matchType: 'EXACT' | 'CONTAINS'
   pattern: string
+  /** The cadence behind this line, carried so the editor reopens on the same
+   *  frequency (mensal/anual/única) rather than silently resetting it. */
+  cadence: 'MONTHLY' | 'ANNUAL' | 'ONCE'
 }
 
 export type MonthRow = {
@@ -512,6 +515,7 @@ export async function getMonthView(
         estimated: item.amountCents === null,
         matchType: item.matchType,
         pattern: item.pattern,
+        cadence: item.cadence,
       })
       recurringLinesByCategory.set(item.categoryId, list)
     }

@@ -4,7 +4,7 @@ import type { Db } from './client'
 import { recurringExpenses } from './schema'
 import type { MatchType } from './merchant-labels'
 
-export type Cadence = 'MONTHLY' | 'ANNUAL'
+export type Cadence = 'MONTHLY' | 'ANNUAL' | 'ONCE'
 
 /**
  * One recurring definition in the shape resolveRecurring matches a row against
@@ -207,7 +207,8 @@ export function resolveRecurring(
  * Whether a recurring item should draw a projected line in a given month.
  * Bounded by its window -- never before it started, never after it ended -- and
  * gated by cadence: MONTHLY lands every month in the window, ANNUAL only in the
- * month of the year its anchor names. `period` is 'YYYY-MM'.
+ * month of the year its anchor names, ONCE only in the anchor month itself.
+ * `period` is 'YYYY-MM'.
  *
  * Pure and total so the cadence rule can be tested without a month view: the
  * view asks this before it considers whether a real charge fulfilled the item.
@@ -217,6 +218,8 @@ export function projectsInPeriod(
   period: string,
 ): boolean {
   const anchor = item.anchorMonth.slice(0, 7)
+  // A one-off lands in exactly one month, so the window bounds are moot.
+  if (item.cadence === 'ONCE') return period === anchor
   if (period < anchor) return false
   if (item.endMonth && period > item.endMonth.slice(0, 7)) return false
   if (item.cadence === 'ANNUAL') return period.slice(5, 7) === anchor.slice(5, 7)

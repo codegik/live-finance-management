@@ -1,0 +1,1 @@
+ALTER TYPE "public"."recurring_cadence" ADD VALUE 'ONCE';
