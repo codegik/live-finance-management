@@ -65,20 +65,34 @@ function block(rows: MonthRow[], group: MonthGroupView['group'] = 'DESPESA_VARIA
 
 const includes = (cents: number) => `inclui ${brl(cents)} previsto`
 
-function count(haystack: string, needle: string): number {
-  return haystack.split(needle).length - 1
+/** The block header and everything under it (the category rows), apart. */
+function split(markup: string): { header: string; rows: string } {
+  const [header, rows] = markup.split('</header>')
+  return { header, rows }
 }
 
-it('says a spend row includes its forecast when the row only waits on bills', () => {
-  const markup = block([row()])
-  // Once on the row, once on the block header.
-  expect(count(markup, includes(38_000))).toBe(2)
+it('notes the forecast once, on the block header, summing its rows', () => {
+  const markup = block([
+    row(),
+    row({ categoryId: 'c2', categoryName: 'Educação', recurringLines: [line({ id: 'r2', amountCents: 10_000 })], recurringCents: 10_000 }),
+  ])
+  const { header, rows } = split(markup)
+  expect(header).toContain(includes(48_000))
+  // No category repeats it.
+  expect(rows).not.toContain('inclui')
 })
 
-it('says a spend row includes its forecast when it also has charges (the row that opens)', () => {
-  // The bug this guards: the expandable variant dropped the note entirely.
-  const markup = block([row({ transactionCount: 5 })])
-  expect(count(markup, includes(38_000))).toBe(2)
+it('leaves the forecast note off a category that also has charges (the row that opens)', () => {
+  const { header, rows } = split(block([row({ transactionCount: 5 })]))
+  expect(header).toContain(includes(38_000))
+  expect(rows).not.toContain('inclui')
+})
+
+it('still badges each expected bill in the opened list', () => {
+  // The per-bill forecast stays visible where the bills are listed.
+  const { rows } = split(block([row()]))
+  expect(rows).toContain('Topic')
+  expect(rows).toContain('previsto')
 })
 
 it('draws no forecast note on a row or block with nothing expected', () => {
@@ -92,7 +106,9 @@ it('keeps a Receita forecast worded as outside the figure', () => {
     [row({ group: 'RECEITA', actualCents: 0, paceCents: 0, recurringLines: [line({ amountCents: 500_000 })], recurringCents: 500_000 })],
     'RECEITA',
   )
-  expect(markup).toContain(`previsto ${brl(500_000)}`)
+  const { header, rows } = split(markup)
+  expect(header).toContain(`previsto ${brl(500_000)}`)
+  expect(rows).not.toContain(`previsto ${brl(500_000)}`)
   expect(markup).not.toContain('inclui')
 })
 
@@ -112,13 +128,11 @@ function summary(groups: Partial<Record<MonthGroupView['group'], number>>): stri
   return renderToStaticMarkup(createElement(MonthSummary, { view }))
 }
 
-it('notes the forecast inside Investido and Despesas, summing both expense blocks', () => {
-  const markup = summary({ INVESTIMENTO: 100_000, DESPESA_FIXA: 5_500, DESPESA_VARIAVEL: 38_000 })
-  expect(markup).toContain(includes(100_000))
-  expect(markup).toContain(includes(43_500))
-})
-
-it('never notes a Receita forecast on the summary, and notes nothing when nothing is expected', () => {
-  expect(summary({ RECEITA: 500_000 })).not.toContain('previsto')
-  expect(summary({})).not.toContain('previsto')
+it('shows the summary totals without a forecast note, even when bills are expected', () => {
+  // The cards already include the forecast in their figures; the breakdown
+  // belongs to the rows, not to the headline.
+  const markup = summary({ RECEITA: 500_000, INVESTIMENTO: 100_000, DESPESA_FIXA: 5_500, DESPESA_VARIAVEL: 38_000 })
+  expect(markup).toContain(brl(100_000))
+  expect(markup).toContain(brl(45_081))
+  expect(markup).not.toContain('previsto')
 })

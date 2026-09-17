@@ -303,10 +303,11 @@ function RowTransactions({
 }
 
 /**
- * How much of a figure is still a forecast. On a spend row the recurring bills
- * are already inside the figure (see MonthRow.actualCents), so the note says the
- * figure includes them -- otherwise a card total that disagrees with the fatura
- * would go unexplained. Receita keeps its forecast outside, and says so.
+ * How much of a block's total is still a forecast. Shown on the block header
+ * only: a category row already lists its expected bills (badged `previsto`)
+ * when opened, so repeating the sum on every row is noise. In a spend block the
+ * bills are inside the total (see MonthRow.actualCents), so the note says the
+ * total includes them; Receita keeps its forecast outside, and says so.
  */
 function ForecastNote({
   group,
@@ -391,7 +392,6 @@ function Row({
           {!MORE_IS_BETTER[row.group] && row.committedCents > 0 ? (
             <span>{brl(row.committedCents)} já comprometido</span>
           ) : null}
-          <ForecastNote group={row.group} recurringCents={row.recurringCents} />
           {row.plannedFrom ? <span>plano herdado de {row.plannedFrom}</span> : null}
         </span>
       </div>
@@ -439,7 +439,6 @@ function Row({
               {!MORE_IS_BETTER[row.group] && row.committedCents > 0 ? (
                 <span>{brl(row.committedCents)} já comprometido</span>
               ) : null}
-              <ForecastNote group={row.group} recurringCents={row.recurringCents} />
               {row.plannedFrom ? <span>plano herdado de {row.plannedFrom}</span> : null}
             </span>
         </summary>

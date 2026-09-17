@@ -24,7 +24,8 @@ function widthPercent(actualCents: number, plannedCents: number): number {
  * the reader has to subtract in their head.
  *
  * The big figure is what the month will have realised: what already happened,
- * plus the recurring bills still expected (said underneath when there are any).
+ * plus the recurring bills still expected. The card does not break that down;
+ * the rows below it say which bills are still a forecast.
  * The track is the plan it is a fraction of; the chip on the right is the gap
  * that remains -- money still to come, budget still available, or the amount a
  * figure has already overrun.
@@ -35,7 +36,6 @@ function Stat({
   actualCents,
   plannedCents = 0,
   plannedNetCents,
-  forecastCents = 0,
 }: {
   label: string
   kind: StatKind
@@ -49,8 +49,6 @@ function Stat({
    * shows underneath its realised balance. Omitted when nothing is planned yet.
    */
   plannedNetCents?: number
-  /** The part of `actualCents` that is recurring bills still expected. */
-  forecastCents?: number
 }) {
   // Saldo is a residual and never carries a plan; the others only have one when
   // a figure was actually planned.
@@ -92,9 +90,6 @@ function Stat({
       >
         {brl(actualCents)}
       </span>
-      {forecastCents > 0 ? (
-        <span className="-mt-1.5 text-xs text-accent-blue">inclui {brl(forecastCents)} previsto</span>
-      ) : null}
 
       {/* A "more/less" figure with a plan draws the plan as the track it fills;
           a plan of zero has no fraction to draw and a 0% bar would read as real
@@ -163,12 +158,6 @@ export function MonthSummary({ view }: { view: MonthView }) {
         view.plannedExpenseCents
       : undefined
 
-  // The recurring bills still expected, already inside Investido and Despesas.
-  const forecast = (groups: string[]) =>
-    view.groups
-      .filter((g) => groups.includes(g.group))
-      .reduce((sum, g) => sum + g.recurringCents, 0)
-
   return (
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       <Stat
@@ -182,14 +171,12 @@ export function MonthSummary({ view }: { view: MonthView }) {
         kind="more"
         actualCents={view.investedCents}
         plannedCents={view.plannedInvestedCents}
-        forecastCents={forecast(['INVESTIMENTO'])}
       />
       <Stat
         label="Despesas"
         kind="less"
         actualCents={view.expenseCents}
         plannedCents={view.plannedExpenseCents}
-        forecastCents={forecast(['DESPESA_FIXA', 'DESPESA_VARIAVEL'])}
       />
       <Stat
         label="Saldo"

@@ -29,6 +29,35 @@ it('keeps the seeding and demo entry points out of the production image', () => 
   expect(ignored).toContain('demo.ts')
 })
 
+it('never runs the test suite while building the image', () => {
+  // The suite runs once, in ./deploy.sh and ./promote.sh, before `fly deploy`
+  // is ever called. Running it again inside the build would need Docker inside
+  // Docker for its Postgres, and would slow every deploy for no new signal.
+  const steps = read('Dockerfile')
+    .split('\n')
+    .filter((line) => /^\s*(RUN|CMD|ENTRYPOINT)\b/.test(line) || /^\s+\S/.test(line))
+    .join('\n')
+  expect(steps).not.toMatch(/vitest|test\.sh|pnpm (run )?test\b|npm (run )?test\b/)
+
+  // Nor through a lifecycle hook the build's `pnpm install` / `pnpm build`
+  // would trigger on its own.
+  const scripts: Record<string, string> = JSON.parse(read('package.json')).scripts
+  for (const hook of ['preinstall', 'install', 'postinstall', 'prepare', 'prebuild', 'build', 'postbuild']) {
+    expect(scripts[hook] ?? '', hook).not.toMatch(/vitest|test\.sh|\btest\b/)
+  }
+})
+
+it('keeps the tests and the delivery scripts that run them out of the image', () => {
+  const ignored = read('.dockerignore')
+    .split('\n')
+    .map((line) => line.trim())
+
+  expect(ignored).toContain('tests')
+  expect(ignored).toContain('test.sh')
+  expect(ignored).toContain('deploy.sh')
+  expect(ignored).toContain('promote.sh')
+})
+
 it('never ships an example env file that switches auto-login on', () => {
   const example = read('.env.example')
 
