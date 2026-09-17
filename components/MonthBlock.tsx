@@ -6,7 +6,7 @@ import { TransactionCategoryPicker } from '@/components/TransactionCategoryPicke
 import { TransactionDetail } from '@/components/TransactionDetail'
 import { Card } from '@/components/ui/card'
 import { brl, brlSigned, percent } from '@/lib/format'
-import { MORE_IS_BETTER } from '@/lib/domain/seed-categories'
+import { GROUP_BUDGET_ROLE, MORE_IS_BETTER } from '@/lib/domain/seed-categories'
 import type {
   MonthBucketDetail,
   MonthGroupView,
@@ -302,6 +302,29 @@ function RowTransactions({
   )
 }
 
+/**
+ * How much of a figure is still a forecast. On a spend row the recurring bills
+ * are already inside the figure (see MonthRow.actualCents), so the note says the
+ * figure includes them -- otherwise a card total that disagrees with the fatura
+ * would go unexplained. Receita keeps its forecast outside, and says so.
+ */
+function ForecastNote({
+  group,
+  recurringCents,
+}: {
+  group: MonthRow['group']
+  recurringCents: number
+}) {
+  if (recurringCents <= 0) return null
+  return (
+    <span className="text-accent-blue">
+      {GROUP_BUDGET_ROLE[group] === 'SPEND'
+        ? `inclui ${brl(recurringCents)} previsto`
+        : `previsto ${brl(recurringCents)}`}
+    </span>
+  )
+}
+
 function Row({
   row,
   stance,
@@ -368,11 +391,7 @@ function Row({
           {!MORE_IS_BETTER[row.group] && row.committedCents > 0 ? (
             <span>{brl(row.committedCents)} já comprometido</span>
           ) : null}
-          {/* What the row still expects from its recurring bills this month --
-              a forecast, so it reads apart from spent and committed money. */}
-          {row.recurringCents > 0 ? (
-            <span className="text-accent-blue">previsto {brl(row.recurringCents)}</span>
-          ) : null}
+          <ForecastNote group={row.group} recurringCents={row.recurringCents} />
           {row.plannedFrom ? <span>plano herdado de {row.plannedFrom}</span> : null}
         </span>
       </div>
@@ -420,6 +439,7 @@ function Row({
               {!MORE_IS_BETTER[row.group] && row.committedCents > 0 ? (
                 <span>{brl(row.committedCents)} já comprometido</span>
               ) : null}
+              <ForecastNote group={row.group} recurringCents={row.recurringCents} />
               {row.plannedFrom ? <span>plano herdado de {row.plannedFrom}</span> : null}
             </span>
         </summary>
@@ -482,6 +502,9 @@ export function MonthBlock({
               de {brl(group.plannedCents)} · {percent(total / group.plannedCents)}
             </span>
           ) : null}
+          <span className="text-xs">
+            <ForecastNote group={group.group} recurringCents={group.recurringCents} />
+          </span>
         </div>
       </header>
       <ul className="list-none divide-y divide-border">

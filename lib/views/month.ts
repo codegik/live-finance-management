@@ -88,11 +88,14 @@ export type MonthTransaction = {
 
 /**
  * One expected charge a category is still waiting for this month: a recurring
- * expense whose pattern has not been fulfilled by a real transaction yet. It is
- * a forecast, not spend -- it never enters `actualCents` or `expenseCents`, only
- * the row's `recurringCents`, so the household sees what is coming without the
- * headline claiming the money already left. Drawn only for the current and
- * future months; a closed month is not still waiting for anything.
+ * expense whose pattern has not been fulfilled by a real transaction yet. On a
+ * SPEND row it is counted in `actualCents` (and so in `expenseCents` or
+ * `investedCents`): the household is certain the bill comes this month, and the
+ * figure it compares to the plan is "what this month will have cost", so the
+ * margin left is real. When the charge lands, the forecast line is dropped and
+ * the real amount takes its place -- the two never both count. Drawn only for
+ * the current and future months; a closed month is not still waiting for
+ * anything.
  */
 export type MonthRecurringLine = {
   /** The recurring_expense id, so a line can be edited or dismissed in place. */
@@ -132,6 +135,11 @@ export type MonthRow = {
    * Always signed so that bigger means more: more spent for an expense,
    * more earned for Receita. Storage is the other way round for income
    * (lib/domain/money.ts), and the flip happens here, once.
+   *
+   * On a SPEND row it includes `recurringCents`: the charges already filed plus
+   * the recurring bills still expected this month. Receita does not fold its
+   * forecast in -- fulfilment is only ever matched against SPEND charges, so a
+   * recurring income would count twice once it arrived.
    */
   actualCents: number
   plannedCents: number | null
@@ -161,7 +169,8 @@ export type MonthRow = {
    * yet. Empty in a past month, and empty in any month once its charge lands.
    */
   recurringLines: MonthRecurringLine[]
-  /** Sum of `recurringLines` -- what this row is still expected to add. */
+  /** Sum of `recurringLines` -- the part of `actualCents` (on a SPEND row) that
+   *  is still expected rather than filed. */
   recurringCents: number
 }
 
@@ -209,6 +218,9 @@ export type MonthView = {
    * does not move the transactions pointing at it. Summing the drawn rows
    * would make that money vanish from the headline while /ledger still shows
    * it -- the two screens then disagree about the same month.
+   *
+   * Includes the expense blocks' unfulfilled recurring bills, the same way their
+   * rows do, so the headline is what the month will have cost.
    */
   expenseCents: number
   /**
@@ -223,9 +235,9 @@ export type MonthView = {
   pendingFaturaLines: PendingFaturaLine[]
   /**
    * Recurring expenses expected across the whole month that no real charge has
-   * fulfilled yet -- the sum of every row's `recurringCents`. A forecast the
-   * dashboard can surface as "expected"; deliberately NOT folded into
-   * `expenseCents`, which only ever holds money that actually left.
+   * fulfilled yet -- the sum of every row's `recurringCents`. Already folded
+   * into `investedCents` and `expenseCents`; carried on its own so the screen
+   * can say how much of those figures is still a forecast.
    */
   recurringCents: number
   /** SPEND this month that no drawn row accounts for: archived categories. */
@@ -528,7 +540,7 @@ export async function getMonthView(
 
     // Income is stored negative, spend positive. One sign flip, so that every
     // consumer downstream can treat "bigger is more" as true.
-    const actualCents = toActualCents(sums?.spentCents ?? 0, group)
+    const settledCents = toActualCents(sums?.spentCents ?? 0, group)
     const variableCents = toActualCents(sums?.variableCents ?? 0, group)
     const committedCents = toActualCents(sums?.committedCents ?? 0, group)
 
@@ -537,6 +549,10 @@ export async function getMonthView(
 
     const recurringLines = recurringLinesByCategory.get(category.id) ?? []
     const recurringCents = recurringLines.reduce((sum, line) => sum + line.amountCents, 0)
+    // A bill the household is certain of counts toward the figure it compares
+    // against the plan. Receita keeps its forecast apart: see MonthRow.actualCents.
+    const forecastCents = role === 'SPEND' ? recurringCents : 0
+    const actualCents = settledCents + forecastCents
 
     return {
       categoryId: category.id,
@@ -558,7 +574,10 @@ export async function getMonthView(
               // amount, so the projection is simply what is attributed to it --
               // there is no elapsed time to extrapolate a rate from.
               actualCents
-            : pace({ variableCents, committedCents, dayOfMonth: elapsedDays, daysInPeriod: daysInMonth }),
+            : // The expected bills are known amounts, not a rate: added once,
+              // never extrapolated.
+              pace({ variableCents, committedCents, dayOfMonth: elapsedDays, daysInPeriod: daysInMonth }) +
+              forecastCents,
       transactions: detailByCategoryRole.get(detailKey) ?? [],
       transactionCount: countByCategoryRole.get(detailKey) ?? 0,
       recurringLines,
@@ -593,6 +612,11 @@ export async function getMonthView(
   const byGroup = new Map(groups.map((g) => [g.group, g]))
   const actual = (group: CategoryGroup) => byGroup.get(group)?.actualCents ?? 0
   const planned = (group: CategoryGroup) => byGroup.get(group)?.plannedCents ?? 0
+  // The part of a SPEND block's figure that is still a forecast. The aggregate
+  // below only knows real rows, so every residual taken against it has to use
+  // the filed part alone.
+  const forecast = (group: CategoryGroup) => byGroup.get(group)?.recurringCents ?? 0
+  const settled = (group: CategoryGroup) => actual(group) - forecast(group)
 
   // The accounting figures, straight off the aggregate. Every centavo the
   // household moved this month is in one of these two, drawn or not.
@@ -610,12 +634,17 @@ export async function getMonthView(
   // the transaction feed has not caught up to. Part of what left the household,
   // so it belongs in the expense total and in the balance below it.
   const pendingFaturaCents = pendingFaturaLines.reduce((sum, line) => sum + line.diffCents, 0)
-  const expenseCents = totalSpentCents - investedCents + pendingFaturaCents
+  const expenseCents =
+    totalSpentCents -
+    settled('INVESTIMENTO') +
+    pendingFaturaCents +
+    forecast('DESPESA_FIXA') +
+    forecast('DESPESA_VARIAVEL')
 
   // What the blocks could not draw. Surfaced rather than dropped, so that the
   // rows on screen and the total above them add up to the same month.
   const drawnSpendCents =
-    actual('INVESTIMENTO') + actual('DESPESA_FIXA') + actual('DESPESA_VARIAVEL')
+    settled('INVESTIMENTO') + settled('DESPESA_FIXA') + settled('DESPESA_VARIAVEL')
   const plannedIncomeCents = planned('RECEITA')
   const plannedInvestedCents = planned('INVESTIMENTO')
   const plannedExpenseCents = planned('DESPESA_FIXA') + planned('DESPESA_VARIAVEL')
@@ -635,7 +664,8 @@ export async function getMonthView(
     expenseCents,
     pendingFaturaCents,
     pendingFaturaLines,
-    recurringCents: groups.reduce((sum, group) => sum + group.recurringCents, 0),
+    recurringCents:
+      forecast('INVESTIMENTO') + forecast('DESPESA_FIXA') + forecast('DESPESA_VARIAVEL'),
     archivedSpentCents:
       totalSpentCents - drawnSpendCents - (uncategorized?.spentCents ?? 0),
     unassignedIncomeCents: totalIncomeCents - actual('RECEITA'),

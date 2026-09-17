@@ -253,7 +253,9 @@ it('projects an unfulfilled recurring item in a future month, at its fixed amoun
   })
 
   // October is a future month with nothing filed: the line is drawn, and the
-  // money is a forecast (recurringCents), never spend (actualCents/expenseCents).
+  // expected bill counts toward the figure compared to the plan -- the row, the
+  // block and the month headline -- while recurringCents says how much of it is
+  // still a forecast.
   const month = await getMonthView(db, householdId, '2026-10', { now: NOW })
   const row = month.groups
     .flatMap((g) => g.rows)
@@ -264,9 +266,36 @@ it('projects an unfulfilled recurring item in a future month, at its fixed amoun
   // The day (15) resolved onto the viewed month (October), for the date column.
   expect(row.recurringLines[0].date).toBe('2026-10-15')
   expect(row.recurringCents).toBe(5500)
-  expect(row.actualCents).toBe(0)
+  expect(row.actualCents).toBe(5500)
+  expect(row.paceCents).toBe(5500)
   expect(month.recurringCents).toBe(5500)
-  expect(month.expenseCents).toBe(0)
+  expect(month.expenseCents).toBe(5500)
+  // A forecast is not a real row, so it must not surface as archived spend.
+  expect(month.archivedSpentCents).toBe(0)
+})
+
+it('counts an expected bill in the current month alongside the charges already filed', async () => {
+  const { db, householdId, cardId, categoryId } = await seedWithCard()
+  await setRecurringExpense(db, householdId, {
+    matchType: 'CONTAINS', pattern: 'TOPIC', title: 'Topic', categoryId,
+    amountCents: 38000, dayOfMonth: 28, cadence: 'MONTHLY', anchorMonth: '2026-08-01',
+  })
+  await fileCharge(db, cardId, categoryId, {
+    description: 'UBER TRIP',
+    amountCents: 7081,
+    date: '2026-08-12',
+  })
+
+  const month = await getMonthView(db, householdId, '2026-08', { now: NOW })
+  const row = month.groups.flatMap((g) => g.rows).find((r) => r.categoryId === categoryId)!
+  // Filed plus expected: the figure the plan is judged against.
+  expect(row.recurringCents).toBe(38000)
+  expect(row.actualCents).toBe(45081)
+  // The projection never lands below the figure: the known bill is added once
+  // on top of the extrapolated charges, not extrapolated itself.
+  expect(row.paceCents).toBeGreaterThanOrEqual(row.actualCents)
+  expect(month.expenseCents).toBe(45081)
+  expect(month.archivedSpentCents).toBe(0)
 })
 
 it('suppresses the projection once a matching real charge lands (no double count)', async () => {
