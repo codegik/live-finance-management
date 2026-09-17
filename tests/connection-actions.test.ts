@@ -11,6 +11,7 @@ import { eq } from 'drizzle-orm'
 import { resetDb, testDb, useTestEnv } from './helpers/db'
 import { startPluggyServer } from './helpers/pluggy-server'
 import { insertTransaction, seedAccount } from './helpers/transactions'
+import { captureConsoleError } from './helpers/console'
 
 const server = startPluggyServer()
 
@@ -111,6 +112,7 @@ it('refreshes a connection: forces the bank fetch, then re-syncs from Pluggy', a
 })
 
 it('reports the throttle when Pluggy refuses the forced update, but still re-syncs', async () => {
+  const errors = captureConsoleError()
   const db = testDb()
   const { householdId, userId } = await createHousehold(db, {
     name: 'Klassmann',
@@ -140,6 +142,8 @@ it('reports the throttle when Pluggy refuses the forced update, but still re-syn
   expect(state.message).toBe(REFRESH_THROTTLED_MESSAGE)
   const rows = await listTransactions(db, householdId, { includeExcluded: true })
   expect(rows.length).toBeGreaterThan(0)
+  // The failure is expected, and it must still be reported.
+  expect(errors.messages()).toContain('force update refused')
 })
 
 it('treats a refresh of another household connection as unknown', async () => {

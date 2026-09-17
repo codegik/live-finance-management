@@ -11,6 +11,8 @@
 #
 # Guardrails:
 #   • refuses a dirty working tree (so what ships matches a commit)
+#   • runs the full test suite (./test.sh) and stops on any failure, before
+#     anything else happens -- nothing untested reaches production
 #   • asks for confirmation before touching production
 #   • tags the released commit (release-<sha>)
 #
@@ -20,7 +22,8 @@
 #
 # The intended flow is ./deploy.sh (staging) → validate → ./promote.sh (prod).
 #
-# Requires: flyctl and jq on PATH, and a prior `fly auth login`.
+# Requires: flyctl and jq on PATH, a prior `fly auth login`, and a running
+# Docker daemon (the tests start their own Postgres).
 
 set -euo pipefail
 cd "$(dirname "$0")"          # repo root (this script lives here)
@@ -35,6 +38,14 @@ if [[ -n "$(git status --porcelain)" ]]; then
 fi
 
 log() { printf '\n==> %s\n' "$*"; }
+
+# The gate. The tree is clean, so the suite runs against exactly the commit that
+# would ship; a failure stops here, before the prompt and before any build.
+log "Tests (must pass before production)"
+if ! ./test.sh; then
+  echo "error: tests failed. Nothing was deployed -- fix them before promoting." >&2
+  exit 1
+fi
 
 APP="codegik-finance"
 REGION="gru"

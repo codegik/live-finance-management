@@ -46,10 +46,19 @@ it('builds the runtime image with NODE_ENV=production', () => {
 })
 
 it('deploys without ever invoking a seeding command', () => {
-  const railway = read('railway.json')
-
-  expect(railway).not.toMatch(/seed/i)
-  expect(railway).not.toMatch(/demo/i)
+  // Everything that runs on a Fly deploy: the scripts, the app configs (whose
+  // release_command runs before traffic), and the reconcile machine setup.
+  for (const file of [
+    'deploy.sh',
+    'promote.sh',
+    'fly/web.toml',
+    'fly/web.staging.toml',
+    'fly/reconcile.lib.sh',
+  ]) {
+    const content = read(file)
+    expect(content, file).not.toMatch(/seed/i)
+    expect(content, file).not.toMatch(/demo/i)
+  }
 })
 
 /**

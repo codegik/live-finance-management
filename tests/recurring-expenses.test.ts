@@ -232,6 +232,14 @@ async function seedWithCard() {
   return { db, householdId, cardId, categoryId: category.id }
 }
 
+/** seedWithCard plus the household's full category list, for tests that file
+ *  recurrences across blocks. */
+async function seedWithCardAndCategories() {
+  const seeded = await seedWithCard()
+  const categories = await listCategories(seeded.db, seeded.householdId)
+  return { ...seeded, categories }
+}
+
 /** insertTransaction leaves a row uncategorized; file it under a category so a
  *  category row is drawn from it. */
 async function fileCharge(
@@ -291,9 +299,9 @@ it('counts an expected bill in the current month alongside the charges already f
   // Filed plus expected: the figure the plan is judged against.
   expect(row.recurringCents).toBe(38000)
   expect(row.actualCents).toBe(45081)
-  // The projection never lands below the figure: the known bill is added once
-  // on top of the extrapolated charges, not extrapolated itself.
-  expect(row.paceCents).toBeGreaterThanOrEqual(row.actualCents)
+  // The filed charge is extrapolated over the month (25 of 31 days elapsed);
+  // the known bill is added once on top, never extrapolated itself.
+  expect(row.paceCents).toBe(Math.round((7081 / 25) * 31) + 38000)
   expect(month.expenseCents).toBe(45081)
   expect(month.archivedSpentCents).toBe(0)
 })
@@ -374,4 +382,66 @@ it('does not project into a closed past month', async () => {
   // Nothing filed and no plan: the row is not even drawn, and nothing is forecast.
   expect(row?.recurringLines ?? []).toHaveLength(0)
   expect(month.recurringCents).toBe(0)
+})
+
+it('adds the forecast once to the block total, and once to the month', async () => {
+  const { db, householdId, categoryId, categories } = await seedWithCardAndCategories()
+  const other = categories.find((c) => c.group === 'DESPESA_FIXA' && c.id !== categoryId)!
+  await setRecurringExpense(db, householdId, {
+    matchType: 'CONTAINS', pattern: 'NETFLIX', title: 'Netflix', categoryId,
+    amountCents: 5500, dayOfMonth: 15, cadence: 'MONTHLY', anchorMonth: '2026-08-01',
+  })
+  await setRecurringExpense(db, householdId, {
+    matchType: 'CONTAINS', pattern: 'ALUGUEL', title: 'Aluguel', categoryId: other.id,
+    amountCents: 200000, dayOfMonth: 5, cadence: 'MONTHLY', anchorMonth: '2026-08-01',
+  })
+
+  const month = await getMonthView(db, householdId, '2026-10', { now: NOW })
+  const fixa = month.groups.find((g) => g.group === 'DESPESA_FIXA')!
+  expect(fixa.recurringCents).toBe(205500)
+  expect(fixa.actualCents).toBe(205500)
+  expect(fixa.paceCents).toBe(205500)
+  expect(month.expenseCents).toBe(205500)
+  expect(month.recurringCents).toBe(205500)
+})
+
+it('counts an expected investment in Investido, never in Despesas', async () => {
+  const { db, householdId, categoryId, categories } = await seedWithCardAndCategories()
+  const invest = categories.find((c) => c.group === 'INVESTIMENTO')!
+  await setRecurringExpense(db, householdId, {
+    matchType: 'CONTAINS', pattern: 'TESOURO', title: 'Tesouro', categoryId: invest.id,
+    amountCents: 100000, dayOfMonth: 10, cadence: 'MONTHLY', anchorMonth: '2026-08-01',
+  })
+  await setRecurringExpense(db, householdId, {
+    matchType: 'CONTAINS', pattern: 'NETFLIX', title: 'Netflix', categoryId,
+    amountCents: 5500, dayOfMonth: 15, cadence: 'MONTHLY', anchorMonth: '2026-08-01',
+  })
+
+  const month = await getMonthView(db, householdId, '2026-10', { now: NOW })
+  const row = month.groups.flatMap((g) => g.rows).find((r) => r.categoryId === invest.id)!
+  expect(row.actualCents).toBe(100000)
+  expect(month.investedCents).toBe(100000)
+  expect(month.expenseCents).toBe(5500)
+  expect(month.recurringCents).toBe(105500)
+  expect(month.netCents).toBe(-105500)
+  expect(month.archivedSpentCents).toBe(0)
+})
+
+it('keeps a Receita forecast out of the figure, since income is never matched as fulfilled', async () => {
+  const { db, householdId, categories } = await seedWithCardAndCategories()
+  const receita = categories.find((c) => c.group === 'RECEITA')!
+  await setRecurringExpense(db, householdId, {
+    matchType: 'CONTAINS', pattern: 'SALARIO', title: 'Salário', categoryId: receita.id,
+    amountCents: 500000, dayOfMonth: 5, cadence: 'MONTHLY', anchorMonth: '2026-08-01',
+  })
+
+  const month = await getMonthView(db, householdId, '2026-10', { now: NOW })
+  const row = month.groups.flatMap((g) => g.rows).find((r) => r.categoryId === receita.id)!
+  // The line is still drawn, but the figure and the headlines do not count it.
+  expect(row.recurringCents).toBe(500000)
+  expect(row.actualCents).toBe(0)
+  expect(row.paceCents).toBe(0)
+  expect(month.incomeCents).toBe(0)
+  expect(month.recurringCents).toBe(0)
+  expect(month.netCents).toBe(0)
 })

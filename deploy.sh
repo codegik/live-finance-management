@@ -24,7 +24,11 @@
 #   bash fly/set-secrets.sh staging
 # See fly/RUNBOOK.md.
 #
-# Requires: flyctl and jq on PATH, and a prior `fly auth login`.
+# The full test suite (./test.sh) runs first; any failure stops the deploy
+# before anything is built.
+#
+# Requires: flyctl and jq on PATH, a prior `fly auth login`, and a running
+# Docker daemon (the tests start their own Postgres).
 
 set -euo pipefail
 cd "$(dirname "$0")"          # repo root (this script lives here)
@@ -33,6 +37,14 @@ command -v fly >/dev/null 2>&1 || { echo "error: 'fly' (flyctl) not found on PAT
 command -v jq  >/dev/null 2>&1 || { echo "error: 'jq' not found on PATH (needed to manage the reconcile machine)." >&2; exit 1; }
 
 log() { printf '\n==> %s\n' "$*"; }
+
+# The gate: a failing suite never reaches staging. It runs against the working
+# tree, which is exactly what `fly deploy .` would build.
+log "Tests (must pass before deploying)"
+if ! ./test.sh; then
+  echo "error: tests failed. Nothing was deployed -- fix them before deploying." >&2
+  exit 1
+fi
 
 APP="codegik-finance-staging"
 REGION="gru"

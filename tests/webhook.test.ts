@@ -14,6 +14,7 @@ import { attachConnection } from '@/lib/sync/connect'
 import { resetDb, testDb, useTestEnv } from './helpers/db'
 import { startPluggyServer } from './helpers/pluggy-server'
 import { insertTransaction } from './helpers/transactions'
+import { captureConsoleError } from './helpers/console'
 
 const sentMail: { subject: string; to: string[] }[] = []
 
@@ -149,6 +150,7 @@ it('mails the household when the synced item crosses a budget threshold', async 
 })
 
 it('still returns 200 and lands the sync when Resend is down', async () => {
+  const errors = captureConsoleError()
   // lib/sync/dispatch.ts wraps evaluateAndNotify in a try/catch. Without it,
   // a Resend outage would 500 this webhook and Pluggy would retry the whole
   // sync over a mail that was never the point. startPluggyServer's own
@@ -191,4 +193,6 @@ it('still returns 200 and lands the sync when Resend is down', async () => {
 
   expect(response.status).toBe(200)
   expect(await listTransactions(db, householdId)).not.toHaveLength(0)
+  // The failure is expected, and it must still be reported.
+  expect(errors.messages()).toContain('alerts failed')
 })

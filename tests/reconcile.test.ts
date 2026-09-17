@@ -18,6 +18,7 @@ import { resetDb, testDb, useTestEnv } from './helpers/db'
 import { createRecordingMailer } from './helpers/mailer'
 import { startPluggyServer } from './helpers/pluggy-server'
 import { insertTransaction, seedAccount } from './helpers/transactions'
+import { captureConsoleError } from './helpers/console'
 
 // Spied rather than stubbed: the real evaluateAndNotify still runs (this
 // stays an integration test), but the spy lets tests below assert HOW MANY
@@ -91,6 +92,7 @@ it('syncs every connection and records when it last succeeded', async () => {
 })
 
 it('keeps reconciling connections that come after a failed one', async () => {
+  const errors = captureConsoleError()
   // The broken connection is created FIRST and the healthy one SECOND, so
   // with reconcileAll's deterministic createdAt ordering the broken one is
   // processed first. This proves the loop keeps going past a failure --
@@ -126,9 +128,12 @@ it('keeps reconciling connections that come after a failed one', async () => {
   expect(result.failed).toHaveLength(1)
   expect(result.succeeded).toHaveLength(1)
   expect(await listTransactions(db, householdId)).not.toHaveLength(0)
+  // The failure is expected, and it must still be reported.
+  expect(errors.messages()).toContain('reconcile failed')
 })
 
 it('leaves existing data in place when a connection fails', async () => {
+  const errors = captureConsoleError()
   const { db, householdId } = await seed()
   await reconcileAll(db, pluggy(), { mailer: noopMailer() })
   const before = await listTransactions(db, householdId)
@@ -142,6 +147,8 @@ it('leaves existing data in place when a connection fails', async () => {
   await reconcileAll(db, pluggy(), { mailer: noopMailer() })
 
   expect(await listTransactions(db, householdId)).toHaveLength(before.length)
+  // The failure is expected, and it must still be reported.
+  expect(errors.messages()).toContain('reconcile failed')
 })
 
 it('rejects a cron request with a missing secret and does no work', async () => {
@@ -175,6 +182,7 @@ it('runs the real reconcile through the route on a valid secret', async () => {
 })
 
 it('reports 207 through the route when some connections fail and some succeed', async () => {
+  const errors = captureConsoleError()
   const { db, householdId, userId } = await seed()
   await db.insert(connections).values({
     householdId,
@@ -200,9 +208,12 @@ it('reports 207 through the route when some connections fail and some succeed', 
   expect(body.succeeded).toHaveLength(1)
   expect(body.failed).toHaveLength(1)
   expect(await listTransactions(db, householdId)).not.toHaveLength(0)
+  // The failure is expected, and it must still be reported.
+  expect(errors.messages()).toContain('reconcile failed')
 })
 
 it('reports 500 through the route when every connection fails', async () => {
+  const errors = captureConsoleError()
   const db = testDb()
   const { householdId, userId } = await createHousehold(db, {
     name: 'Klassmann',
@@ -229,6 +240,8 @@ it('reports 500 through the route when every connection fails', async () => {
   expect(response.status).toBe(500)
   expect(body.succeeded).toHaveLength(0)
   expect(body.failed).toHaveLength(1)
+  // The failure is expected, and it must still be reported.
+  expect(errors.messages()).toContain('reconcile failed')
 })
 
 it('recategorizes and corrects budget roles for every household after the nightly sync', async () => {
@@ -451,6 +464,7 @@ it('sends one alert message per reconcile even when the household has two connec
 })
 
 it('still alerts the household when a sibling connection fails', async () => {
+  const errors = captureConsoleError()
   // Distinct from 'keeps reconciling connections that come after a failed
   // one': that test proves the sync loop does not stop, but seeds no budget
   // crossing and asserts no mail. This proves the household-wide alert pass
@@ -482,9 +496,12 @@ it('still alerts the household when a sibling connection fails', async () => {
   expect(await listTransactions(db, householdId)).not.toHaveLength(0)
   expect(sent).toHaveLength(1)
   expect(sent[0].subject).toContain('Supermercado')
+  // The failure is expected, and it must still be reported.
+  expect(errors.messages()).toContain('reconcile failed')
 })
 
 it('reports a reconcile as succeeded even when the alert mail fails', async () => {
+  const errors = captureConsoleError()
   // A Resend outage must not turn a healthy reconcile into a failed run, or
   // the exit code Railway records stops meaning "a card is broken".
   const now = new Date()
@@ -498,4 +515,6 @@ it('reports a reconcile as succeeded even when the alert mail fails', async () =
   expect(result.failed).toEqual([])
   expect(result.succeeded).toHaveLength(1)
   expect(result.alerted).toBe(0)
+  // The failure is expected, and it must still be reported.
+  expect(errors.messages()).toContain('alerts failed')
 })

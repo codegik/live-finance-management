@@ -24,6 +24,7 @@ import { connections } from '@/lib/db/schema'
 import { getLedgerView } from '@/lib/views/ledger'
 import { resetDb, testDb, useTestEnv } from './helpers/db'
 import { startPluggyServer } from './helpers/pluggy-server'
+import { captureConsoleError } from './helpers/console'
 
 const server = startPluggyServer()
 
@@ -157,6 +158,7 @@ it('still mints a plain token when no item is named', async () => {
 // these tests worth having is the body: the status alone was never the bug.
 
 it('reports unset Pluggy credentials as ENV_INCOMPLETE naming the variables', async () => {
+  const errors = captureConsoleError()
   await signedIn()
   // Exactly what ./start.sh writes on a first run, and warns about.
   vi.stubEnv('PLUGGY_CLIENT_ID', 'replace-with-your-pluggy-client-id')
@@ -171,9 +173,12 @@ it('reports unset Pluggy credentials as ENV_INCOMPLETE naming the variables', as
     error: 'ENV_INCOMPLETE',
     detail: 'PLUGGY_CLIENT_ID, PLUGGY_CLIENT_SECRET',
   })
+  // The failure is expected, and it must still be reported.
+  expect(errors.messages()).toContain('connect token failed')
 })
 
 it('reports credentials Pluggy rejects as PLUGGY_AUTH_FAILED, not as an empty 500', async () => {
+  const errors = captureConsoleError()
   await signedIn()
   // Well-formed and not a placeholder, so loadEnv is satisfied; the mock
   // Pluggy answers /auth with 403 for any clientId but its own.
@@ -185,6 +190,8 @@ it('reports credentials Pluggy rejects as PLUGGY_AUTH_FAILED, not as an empty 50
 
   expect(response.status).toBe(503)
   expect(await response.json()).toEqual({ error: 'PLUGGY_AUTH_FAILED' })
+  // The failure is expected, and it must still be reported.
+  expect(errors.messages()).toContain('connect token failed')
 })
 
 it('creates an invite for the caller household', async () => {
@@ -245,6 +252,7 @@ it('leaves the ledger populated right after POST /api/connections', async () => 
 })
 
 it('still keeps the connection when the first sync fails, and says so', async () => {
+  const errors = captureConsoleError()
   const { db, householdId } = await signedIn()
 
   const { http, HttpResponse } = await import('msw')
@@ -269,6 +277,8 @@ it('still keeps the connection when the first sync fails, and says so', async ()
 
   const view = await getLedgerView(db, householdId)
   expect(view.health.allFresh).toBe(false)
+  // The failure is expected, and it must still be reported.
+  expect(errors.messages()).toContain('initial sync after connect failed')
 })
 
 // --- I1 at the route boundary ------------------------------------------------
